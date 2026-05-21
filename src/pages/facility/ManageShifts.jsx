@@ -30,7 +30,7 @@ export default function ManageShifts() {
       title="My Shifts"
       subtitle="All shifts you have posted."
       action={
-        <Button as={Link} to="/facility/post-shift" size="sm">
+        <Button to="/facility/post-shift" size="sm">
           <Plus className="w-4 h-4 mr-1" /> Post Shift
         </Button>
       }
@@ -63,7 +63,7 @@ export default function ManageShifts() {
 }
 
 function ShiftRow({ shift }) {
-  const count = shift.applications?.[0]?.count ?? 0;
+  const count = shift.applicant_count ?? 0;
   return (
     <Link
       to={`/facility/shifts/${shift.id}`}
@@ -98,7 +98,7 @@ function Empty({ filter }) {
       {filter === 'all' && (
         <>
           <p className="text-sm text-gray-400 mt-1 mb-4">Post a shift to start receiving applications.</p>
-          <Button as={Link} to="/facility/post-shift" size="sm"><Plus className="w-4 h-4 mr-1" />Post Shift</Button>
+          <Button to="/facility/post-shift" size="sm"><Plus className="w-4 h-4 mr-1" />Post Shift</Button>
         </>
       )}
     </div>

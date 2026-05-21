@@ -117,7 +117,7 @@ function EmptyState({ tab }) {
       {tab === 'all' && (
         <>
           <p className="text-sm text-gray-400 mt-1 mb-4">Start by browsing open shifts.</p>
-          <Button as={Link} to="/co/shifts" size="sm">
+          <Button to="/co/shifts" size="sm">
             <ArrowRight className="w-4 h-4 mr-1" /> Browse Shifts
           </Button>
         </>

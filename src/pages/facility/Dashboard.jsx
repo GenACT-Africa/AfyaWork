@@ -30,7 +30,7 @@ export default function FacilityDashboard() {
     <PageWrapper
       title={`Welcome back, ${user?.display_name || 'there'}`}
       subtitle="Here's an overview of your shift activity."
-      action={<Button as={Link} to="/facility/post-shift"><Plus className="w-4 h-4 mr-1" />Post Shift</Button>}
+      action={<Button to="/facility/post-shift"><Plus className="w-4 h-4 mr-1" />Post Shift</Button>}
     >
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -70,7 +70,7 @@ export default function FacilityDashboard() {
 }
 
 function FacilityShiftRow({ shift }) {
-  const applicantCount = shift.applications?.[0]?.count ?? 0;
+  const applicantCount = shift.applicant_count ?? 0;
   return (
     <Link
       to={`/facility/shifts/${shift.id}`}
@@ -94,7 +94,7 @@ function EmptyShifts() {
       <CalendarDays className="w-10 h-10 text-gray-300 mx-auto mb-3" />
       <p className="font-medium text-gray-700">No shifts posted yet</p>
       <p className="text-sm text-gray-400 mt-1 mb-4">Post your first shift to start receiving applications.</p>
-      <Button as={Link} to="/facility/post-shift" size="sm"><Plus className="w-4 h-4 mr-1" />Post first shift</Button>
+      <Button to="/facility/post-shift" size="sm"><Plus className="w-4 h-4 mr-1" />Post first shift</Button>
     </div>
   );
 }

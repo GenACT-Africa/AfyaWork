@@ -32,11 +32,31 @@ export async function getOpenShifts() {
 }
 
 export async function getFacilityShifts(facilityId) {
-  return supabase
+  // Fetch shifts without the applications(count) join — count separately to avoid RLS edge cases
+  const { data: shifts, error } = await supabase
     .from('shifts')
-    .select(`*, applications(count)`)
+    .select('*')
     .eq('facility_id', facilityId)
     .order('created_at', { ascending: false });
+
+  if (error || !shifts || shifts.length === 0) return { data: shifts || [], error };
+
+  // Count pending applications per shift
+  const shiftIds = shifts.map((s) => s.id);
+  const { data: appCounts } = await supabase
+    .from('applications')
+    .select('shift_id, status')
+    .in('shift_id', shiftIds);
+
+  const countMap = {};
+  (appCounts || []).forEach(({ shift_id }) => {
+    countMap[shift_id] = (countMap[shift_id] || 0) + 1;
+  });
+
+  return {
+    data: shifts.map((s) => ({ ...s, applicant_count: countMap[s.id] || 0 })),
+    error: null,
+  };
 }
 
 export async function getShiftWithApplicants(shiftId) {
@@ -48,13 +68,31 @@ export async function getShiftWithApplicants(shiftId) {
 
   if (shiftError) return { data: null, error: shiftError };
 
-  const { data: applicants, error: appError } = await supabase
+  // Fetch applications with user info (direct FK: applications.co_id → users.id)
+  const { data: applications, error: appError } = await supabase
     .from('applications')
-    .select(`*, users(display_name, phone, email), co_profiles(license_number, specialization, subscription_tier)`)
+    .select('*, users(display_name, phone, email)')
     .eq('shift_id', shiftId)
     .order('applied_at', { ascending: true });
 
-  return { data: { ...shift, applicants: applicants || [] }, error: appError };
+  if (appError) return { data: null, error: appError };
+
+  // Attach co_profiles separately (no direct FK from applications to co_profiles)
+  const coIds = (applications || []).map((a) => a.co_id);
+  const { data: coProfiles } = coIds.length
+    ? await supabase
+        .from('co_profiles')
+        .select('user_id, license_number, specialization, subscription_tier')
+        .in('user_id', coIds)
+    : { data: [] };
+
+  const profileMap = Object.fromEntries((coProfiles || []).map((p) => [p.user_id, p]));
+  const applicants = (applications || []).map((a) => ({
+    ...a,
+    co_profiles: profileMap[a.co_id] || null,
+  }));
+
+  return { data: { ...shift, applicants }, error: null };
 }
 
 export async function createShift(shiftData) {

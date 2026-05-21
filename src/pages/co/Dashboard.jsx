@@ -31,7 +31,7 @@ export default function CODashboard() {
       title={`Welcome, ${user?.display_name || 'there'}`}
       subtitle="Your locum activity at a glance."
       action={
-        <Button as={Link} to="/co/shifts">
+        <Button to="/co/shifts">
           <Search className="w-4 h-4 mr-1" /> Browse Shifts
         </Button>
       }
@@ -95,7 +95,7 @@ function EmptyState() {
       <ClipboardList className="w-10 h-10 text-gray-300 mx-auto mb-3" />
       <p className="font-medium text-gray-700">No applications yet</p>
       <p className="text-sm text-gray-400 mt-1 mb-4">Browse open shifts and apply to get started.</p>
-      <Button as={Link} to="/co/shifts" size="sm">
+      <Button to="/co/shifts" size="sm">
         <ArrowRight className="w-4 h-4 mr-1" /> Browse Shifts
       </Button>
     </div>
