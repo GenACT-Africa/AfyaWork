@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Stethoscope, MapPin, Clock, Banknote, Building2,
+  Stethoscope, MapPin, Clock, Building2,
   ArrowRight, Search, Filter, Users, CalendarDays, Menu, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -11,8 +11,15 @@ import { ShiftCardSkeleton } from '../components/common/Skeleton';
 const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-6AM)', '24-Hour', 'Weekend'];
 
 export default function Landing() {
-  const { user, role } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect signed-in users straight to their dashboard
+  useEffect(() => {
+    if (!authLoading && user && role) {
+      navigate(role === 'co' ? '/co/dashboard' : '/facility/dashboard', { replace: true });
+    }
+  }, [user, role, authLoading, navigate]);
 
   const [shifts, setShifts] = useState([]);
   const [facilities, setFacilities] = useState([]);
@@ -49,79 +56,52 @@ export default function Landing() {
 
   const filtered = filter === 'All' ? shifts : shifts.filter((s) => s.shift_type === filter);
 
-  function handleApply(shiftId) {
-    if (!user) {
-      navigate('/auth/register?role=co');
-    } else if (role === 'co') {
-      navigate('/co/shifts');
-    } else {
-      navigate('/facility/dashboard');
-    }
+  function handleApply() {
+    navigate('/auth/register?role=co');
   }
+
+  // Don't flash the page while auth is resolving
+  if (authLoading) return null;
 
   return (
     <div className="min-h-screen bg-white">
-      {/* ── NAV ── */}
+      {/* ── NAV (visitor-only — signed-in users are redirected to dashboard) ── */}
       <nav className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 font-bold text-teal-600 text-lg">
-            <Stethoscope className="w-6 h-6" />
+        <div className="max-w-6xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-2 font-bold text-teal-600 text-base md:text-lg">
+            <Stethoscope className="w-5 h-5 md:w-6 md:h-6" />
             AfyaWork
           </Link>
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-3">
-            {user ? (
-              <>
-                <Link
-                  to={role === 'facility' ? '/facility/dashboard' : '/co/dashboard'}
-                  className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to={role === 'facility' ? '/facility/post-shift' : '/co/shifts'}
-                  className="bg-teal-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors"
-                >
-                  {role === 'facility' ? 'Post a Shift' : 'Browse Shifts'}
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link to="/auth/login" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
-                  Sign in
-                </Link>
-                <Link to="/auth/register?role=facility" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
-                  For Facilities
-                </Link>
-                <Link to="/auth/register?role=co" className="bg-teal-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors">
-                  Join as CO
-                </Link>
-              </>
-            )}
+            <Link to="/auth/login" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
+              Sign in
+            </Link>
+            <Link to="/auth/register?role=facility" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
+              For Facilities
+            </Link>
+            <Link to="/auth/register?role=co" className="bg-teal-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors">
+              Join as CO
+            </Link>
           </div>
 
           {/* Mobile hamburger */}
-          <button className="md:hidden p-2 rounded-lg hover:bg-gray-100" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          <button
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5 text-gray-600" /> : <Menu className="w-5 h-5 text-gray-600" />}
           </button>
         </div>
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white px-4 py-3 space-y-2">
-            {user ? (
-              <>
-                <Link to={role === 'facility' ? '/facility/dashboard' : '/co/dashboard'} onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">Dashboard</Link>
-                <Link to={role === 'facility' ? '/facility/post-shift' : '/co/shifts'} onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-teal-600 hover:bg-teal-50 rounded-lg">{role === 'facility' ? 'Post a Shift' : 'Browse Shifts'}</Link>
-              </>
-            ) : (
-              <>
-                <Link to="/auth/login" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">Sign in</Link>
-                <Link to="/auth/register?role=facility" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">Register as Facility</Link>
-                <Link to="/auth/register?role=co" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-sm font-medium text-teal-600 hover:bg-teal-50 rounded-lg">Join as Clinical Officer</Link>
-              </>
-            )}
+          <div className="md:hidden border-t border-gray-100 bg-white shadow-lg px-4 py-3 space-y-1">
+            <Link to="/auth/login" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">Sign in</Link>
+            <Link to="/auth/register?role=facility" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">Register as Facility</Link>
+            <Link to="/auth/register?role=co" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-teal-600 bg-teal-50 hover:bg-teal-100 rounded-xl">Join as Clinical Officer</Link>
           </div>
         )}
       </nav>
@@ -141,23 +121,12 @@ export default function Landing() {
               AfyaWork connects verified Clinical Officers with private healthcare facilities. Browse open shifts or post your own — no WhatsApp groups needed.
             </p>
             <div className="flex flex-wrap gap-3">
-              {!user ? (
-                <>
-                  <Link to="/auth/register?role=co" className="flex items-center gap-2 bg-white text-teal-700 font-semibold px-5 py-3 rounded-lg hover:bg-teal-50 transition-colors text-sm">
-                    Find Shifts <ArrowRight className="w-4 h-4" />
-                  </Link>
-                  <Link to="/auth/register?role=facility" className="flex items-center gap-2 bg-teal-500/40 text-white font-semibold px-5 py-3 rounded-lg hover:bg-teal-500/60 transition-colors text-sm border border-teal-400/50">
-                    Post a Shift
-                  </Link>
-                </>
-              ) : (
-                <Link
-                  to={role === 'facility' ? '/facility/post-shift' : '/co/shifts'}
-                  className="flex items-center gap-2 bg-white text-teal-700 font-semibold px-5 py-3 rounded-lg hover:bg-teal-50 transition-colors text-sm"
-                >
-                  {role === 'facility' ? 'Post a Shift' : 'Apply for Shifts'} <ArrowRight className="w-4 h-4" />
-                </Link>
-              )}
+              <Link to="/auth/register?role=co" className="flex items-center gap-2 bg-white text-teal-700 font-semibold px-5 py-3 rounded-lg hover:bg-teal-50 transition-colors text-sm">
+                Find Shifts <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link to="/auth/register?role=facility" className="flex items-center gap-2 bg-teal-500/40 text-white font-semibold px-5 py-3 rounded-lg hover:bg-teal-500/60 transition-colors text-sm border border-teal-400/50">
+                Post a Shift
+              </Link>
             </div>
           </div>
         </div>
@@ -217,9 +186,7 @@ export default function Landing() {
               <PublicShiftCard
                 key={shift.id}
                 shift={shift}
-                user={user}
-                role={role}
-                onApply={() => handleApply(shift.id)}
+                onApply={handleApply}
               />
             ))}
           </div>
@@ -286,7 +253,7 @@ function StatPill({ icon: Icon, label, value }) {
   );
 }
 
-function PublicShiftCard({ shift, user, role, onApply }) {
+function PublicShiftCard({ shift, onApply }) {
   const facility = shift.facility_profiles;
 
   return (
@@ -321,25 +288,12 @@ function PublicShiftCard({ shift, user, role, onApply }) {
       )}
 
       <div className="mt-auto">
-        {!user ? (
-          <button
-            onClick={onApply}
-            className="w-full bg-teal-600 text-white text-sm font-medium py-2 rounded-lg hover:bg-teal-700 transition-colors"
-          >
-            Sign up to Apply
-          </button>
-        ) : role === 'co' ? (
-          <button
-            onClick={onApply}
-            className="w-full bg-teal-600 text-white text-sm font-medium py-2 rounded-lg hover:bg-teal-700 transition-colors"
-          >
-            Apply for Shift
-          </button>
-        ) : (
-          <div className="w-full text-center text-xs text-gray-400 py-2">
-            Posted by a facility
-          </div>
-        )}
+        <button
+          onClick={onApply}
+          className="w-full bg-teal-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-teal-700 active:bg-teal-800 transition-colors"
+        >
+          Sign up to Apply
+        </button>
       </div>
     </div>
   );
