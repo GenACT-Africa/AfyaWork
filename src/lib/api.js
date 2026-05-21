@@ -9,12 +9,26 @@ export function calculateFee(coPay) {
 
 // ── Shifts ──
 
+// Shifts → facility_profiles goes through users (no direct FK), so we fetch separately
+async function attachFacilityProfiles(shifts) {
+  if (!shifts || shifts.length === 0) return shifts;
+  const ids = [...new Set(shifts.map((s) => s.facility_id))];
+  const { data: profiles } = await supabase
+    .from('facility_profiles')
+    .select('user_id, facility_name, facility_type, address')
+    .in('user_id', ids);
+  const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  return shifts.map((s) => ({ ...s, facility_profiles: byId[s.facility_id] || null }));
+}
+
 export async function getOpenShifts() {
-  return supabase
+  const { data, error } = await supabase
     .from('shifts')
-    .select(`*, facility_profiles(facility_name, facility_type, address)`)
+    .select('*')
     .eq('status', 'open')
     .order('shift_date', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: await attachFacilityProfiles(data), error: null };
 }
 
 export async function getFacilityShifts(facilityId) {
@@ -62,11 +76,32 @@ export async function applyToShift(shiftId, coId) {
 }
 
 export async function getMyCOApplications(coId) {
-  return supabase
+  const { data: apps, error } = await supabase
     .from('applications')
-    .select(`*, shifts(shift_date, shift_type, pay_amount, status, facility_profiles(facility_name))`)
+    .select('*, shifts(shift_id:id, shift_date, shift_type, pay_amount, status, facility_id)')
     .eq('co_id', coId)
     .order('applied_at', { ascending: false });
+
+  if (error) return { data: null, error };
+  if (!apps || apps.length === 0) return { data: [], error: null };
+
+  // Attach facility names separately (shifts → facility_profiles has no direct FK)
+  const facilityIds = [...new Set(apps.map((a) => a.shifts?.facility_id).filter(Boolean))];
+  const { data: profiles } = await supabase
+    .from('facility_profiles')
+    .select('user_id, facility_name')
+    .in('user_id', facilityIds);
+
+  const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  return {
+    data: apps.map((a) => ({
+      ...a,
+      shifts: a.shifts
+        ? { ...a.shifts, facility_profiles: byId[a.shifts.facility_id] || null }
+        : null,
+    })),
+    error: null,
+  };
 }
 
 export async function approveApplication(applicationId) {

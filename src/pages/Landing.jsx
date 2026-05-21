@@ -30,10 +30,11 @@ export default function Landing() {
 
   useEffect(() => {
     async function load() {
-      const [shiftsRes, facilitiesRes] = await Promise.all([
+      // Fetch shifts and facility_profiles in separate queries (no direct FK between them)
+      const [{ data: rawShifts }, { data: facilitiesData }] = await Promise.all([
         supabase
           .from('shifts')
-          .select('*, facility_profiles(facility_name, facility_type, address)')
+          .select('*')
           .eq('status', 'open')
           .order('shift_date', { ascending: true }),
         supabase
@@ -43,12 +44,18 @@ export default function Landing() {
           .limit(8),
       ]);
 
-      const shiftsData = shiftsRes.data || [];
-      const facilitiesData = facilitiesRes.data || [];
+      // Attach facility info to each shift client-side
+      const profileMap = Object.fromEntries(
+        (facilitiesData || []).map((p) => [p.user_id, p])
+      );
+      const shiftsData = (rawShifts || []).map((s) => ({
+        ...s,
+        facility_profiles: profileMap[s.facility_id] || null,
+      }));
 
       setShifts(shiftsData);
-      setFacilities(facilitiesData);
-      setStats({ shifts: shiftsData.length, facilities: facilitiesData.length });
+      setFacilities(facilitiesData || []);
+      setStats({ shifts: shiftsData.length, facilities: (facilitiesData || []).length });
       setLoading(false);
     }
     load();
