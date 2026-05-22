@@ -59,7 +59,11 @@ BEGIN
     new_id, '00000000-0000-0000-0000-000000000000', p_email,
     crypt(p_password, gen_salt('bf')), now(),
     '{"provider":"email","providers":["email"]}',
-    jsonb_build_object('role', 'facility', 'display_name', p_facility_name),
+    -- handle_new_user trigger reads these fields to create public.users + facility_profiles
+    jsonb_build_object(
+      'role', 'facility', 'display_name', p_facility_name,
+      'facility_name', p_facility_name, 'facility_type', p_facility_type, 'address', p_address
+    ),
     'authenticated', 'authenticated', now(), now(), '', '', false
   );
 
@@ -75,17 +79,8 @@ BEGIN
     'email', p_email, now(), now(), now()
   );
 
-  -- handle_new_user trigger creates the public.users row;
-  -- upsert ensures role/phone are set correctly regardless.
-  INSERT INTO public.users (id, email, role, display_name, phone, created_at, updated_at)
-  VALUES (new_id, p_email, 'facility', p_facility_name, p_phone, now(), now())
-  ON CONFLICT (id) DO UPDATE
-    SET role = 'facility', display_name = p_facility_name, phone = p_phone;
-
-  INSERT INTO public.facility_profiles (user_id, facility_name, facility_type, address)
-  VALUES (new_id, p_facility_name, p_facility_type, p_address)
-  ON CONFLICT (user_id) DO UPDATE
-    SET facility_name = p_facility_name, facility_type = p_facility_type, address = p_address;
+  -- Trigger already created public.users and facility_profiles; just set phone
+  UPDATE public.users SET phone = p_phone WHERE id = new_id;
 
   RETURN new_id;
 END;
@@ -125,7 +120,11 @@ BEGIN
     new_id, '00000000-0000-0000-0000-000000000000', p_email,
     crypt(p_password, gen_salt('bf')), now(),
     '{"provider":"email","providers":["email"]}',
-    jsonb_build_object('role', 'co', 'display_name', p_display_name),
+    -- handle_new_user trigger reads these fields to create public.users + co_profiles
+    jsonb_build_object(
+      'role', 'co', 'display_name', p_display_name,
+      'license_number', p_license_number, 'specialization', p_specialization
+    ),
     'authenticated', 'authenticated', now(), now(), '', '', false
   );
 
@@ -141,15 +140,8 @@ BEGIN
     'email', p_email, now(), now(), now()
   );
 
-  INSERT INTO public.users (id, email, role, display_name, phone, created_at, updated_at)
-  VALUES (new_id, p_email, 'co', p_display_name, p_phone, now(), now())
-  ON CONFLICT (id) DO UPDATE
-    SET role = 'co', display_name = p_display_name, phone = p_phone;
-
-  INSERT INTO public.co_profiles (user_id, license_number, specialization)
-  VALUES (new_id, p_license_number, p_specialization)
-  ON CONFLICT (user_id) DO UPDATE
-    SET license_number = p_license_number, specialization = p_specialization;
+  -- Trigger already created public.users and co_profiles; just set phone
+  UPDATE public.users SET phone = p_phone WHERE id = new_id;
 
   RETURN new_id;
 END;
