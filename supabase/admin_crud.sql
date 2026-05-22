@@ -37,7 +37,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_facility(
 )
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   new_id      uuid := gen_random_uuid();
@@ -103,7 +103,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_worker(
 )
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   new_id      uuid := gen_random_uuid();
@@ -160,7 +160,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.admin_delete_user(p_user_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 BEGIN
   IF NOT is_admin() THEN
