@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { UserCircle, Mail, Phone, Search, Award } from 'lucide-react';
+import { UserCircle, Mail, Phone, Search, Award, Plus, Pencil, Trash2, X } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
-import { getAdminWorkers } from '../../lib/api';
+import { Button } from '../../components/common/Button';
+import { Input, Select } from '../../components/common/Input';
+import { getAdminWorkers, adminCreateWorker, adminUpdateWorker, adminDeleteUser } from '../../lib/api';
+
+const BLANK = { email: '', password: '', display_name: '', license_number: '', specialization: '', phone: '' };
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -15,14 +19,42 @@ const tierBadge = {
   premium:  'bg-amber-50 text-amber-700',
 };
 
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
+          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminWorkers() {
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    getAdminWorkers().then(({ data }) => { setWorkers(data || []); setLoading(false); });
-  }, []);
+  const [modal, setModal] = useState(null); // null | { mode: 'add' | 'edit', userId?: string }
+  const [form, setForm] = useState(BLANK);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function load() {
+    const { data } = await getAdminWorkers();
+    setWorkers(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
 
   const filtered = workers.filter((w) => {
     const q = search.toLowerCase();
@@ -34,10 +66,65 @@ export default function AdminWorkers() {
     );
   });
 
+  function set(field) {
+    return (e) => setForm((p) => ({ ...p, [field]: e.target.value }));
+  }
+
+  function openAdd() {
+    setForm(BLANK);
+    setFormError('');
+    setModal({ mode: 'add' });
+  }
+
+  function openEdit(w) {
+    setForm({
+      email: w.users?.email || '',
+      password: '',
+      display_name: w.users?.display_name || '',
+      license_number: w.license_number || '',
+      specialization: w.specialization || '',
+      phone: w.users?.phone || '',
+    });
+    setFormError('');
+    setModal({ mode: 'edit', userId: w.user_id });
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setFormError('');
+    if (!form.display_name.trim()) { setFormError('Full name is required.'); return; }
+    if (!form.license_number.trim()) { setFormError('License number is required.'); return; }
+    if (modal.mode === 'add') {
+      if (!form.email.trim()) { setFormError('Email is required.'); return; }
+      if (form.password.length < 6) { setFormError('Password must be at least 6 characters.'); return; }
+    }
+    setSaving(true);
+    const { error } = modal.mode === 'add'
+      ? await adminCreateWorker(form)
+      : await adminUpdateWorker(modal.userId, form);
+    setSaving(false);
+    if (error) { setFormError(error.message); return; }
+    setModal(null);
+    load();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    await adminDeleteUser(deleteTarget.user_id);
+    setDeleting(false);
+    setDeleteTarget(null);
+    load();
+  }
+
   return (
     <PageWrapper
       title="Clinical Officers"
       subtitle={`${workers.length} registered workers`}
+      action={
+        <Button size="sm" onClick={openAdd}>
+          <Plus className="w-4 h-4" /> Add Worker
+        </Button>
+      }
     >
       {/* Search */}
       <div className="relative mb-6 max-w-sm">
@@ -71,6 +158,7 @@ export default function AdminWorkers() {
                 <th className="text-left px-5 py-4 font-semibold">Tier</th>
                 <th className="text-left px-5 py-4 font-semibold">Applications</th>
                 <th className="text-left px-5 py-4 font-semibold">Joined</th>
+                <th className="px-5 py-4" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -79,7 +167,7 @@ export default function AdminWorkers() {
                   <td className="px-5 py-4">
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shrink-0 shadow-sm text-white text-xs font-bold">
-                        {(w.users?.display_name || w.users?.email || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+                        {(w.users?.display_name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900">{w.users?.display_name || '—'}</p>
@@ -113,13 +201,90 @@ export default function AdminWorkers() {
                     </span>
                     <p className="text-xs text-gray-400 mt-1">{w.app_stats?.total || 0} total</p>
                   </td>
-                  <td className="px-5 py-4 text-gray-500 text-xs">
-                    {formatDate(w.users?.created_at)}
+                  <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(w.users?.created_at)}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => openEdit(w)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteTarget(w)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Add / Edit Modal */}
+      {modal && (
+        <Modal title={modal.mode === 'add' ? 'Add Clinical Officer' : 'Edit Clinical Officer'} onClose={() => setModal(null)}>
+          <form onSubmit={handleSave} className="space-y-4">
+            {modal.mode === 'add' && (
+              <>
+                <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="doctor@example.com" required />
+                <Input label="Temporary Password" type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" required />
+              </>
+            )}
+            {modal.mode === 'edit' && (
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Email</label>
+                <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg">{form.email}</p>
+              </div>
+            )}
+            <Input label="Full Name" value={form.display_name} onChange={set('display_name')} placeholder="Dr. Amina Juma" required />
+            <Input label="License Number" value={form.license_number} onChange={set('license_number')} placeholder="CO-12345" required />
+            <Select label="Specialization" value={form.specialization} onChange={set('specialization')}>
+              <option value="">Select specialization…</option>
+              <option value="General">General</option>
+              <option value="Paediatrics">Paediatrics</option>
+              <option value="Maternity">Maternity</option>
+              <option value="Surgery">Surgery</option>
+              <option value="Emergency">Emergency</option>
+            </Select>
+            <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+
+            {formError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">{formError}</p>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancel</Button>
+              <Button type="submit" className="flex-1" loading={saving}>
+                {modal.mode === 'add' ? 'Create Worker' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6 text-red-600" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Delete Worker</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              This will permanently delete <span className="font-semibold text-gray-800">{deleteTarget.users?.display_name || 'this worker'}</span> and all their application history. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button variant="danger" className="flex-1" loading={deleting} onClick={handleDelete}>Delete</Button>
+            </div>
+          </div>
         </div>
       )}
     </PageWrapper>

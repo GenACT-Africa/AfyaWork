@@ -284,6 +284,50 @@ export async function getAdminShifts() {
   };
 }
 
+// ── Admin CRUD ──
+
+export async function adminCreateFacility({ email, password, facility_name, facility_type, address, phone }) {
+  return supabase.rpc('admin_create_facility', {
+    p_email: email,
+    p_password: password,
+    p_facility_name: facility_name,
+    p_facility_type: facility_type || null,
+    p_address: address || null,
+    p_phone: phone || null,
+  });
+}
+
+export async function adminCreateWorker({ email, password, display_name, license_number, specialization, phone }) {
+  return supabase.rpc('admin_create_worker', {
+    p_email: email,
+    p_password: password,
+    p_display_name: display_name,
+    p_license_number: license_number,
+    p_specialization: specialization || null,
+    p_phone: phone || null,
+  });
+}
+
+export async function adminUpdateFacility(userId, { facility_name, facility_type, address, phone }) {
+  const [profileRes, userRes] = await Promise.all([
+    supabase.from('facility_profiles').update({ facility_name, facility_type, address }).eq('user_id', userId),
+    supabase.from('users').update({ display_name: facility_name, phone }).eq('id', userId),
+  ]);
+  return { error: profileRes.error || userRes.error || null };
+}
+
+export async function adminUpdateWorker(userId, { display_name, license_number, specialization, phone }) {
+  const [profileRes, userRes] = await Promise.all([
+    supabase.from('co_profiles').update({ license_number, specialization }).eq('user_id', userId),
+    supabase.from('users').update({ display_name, phone }).eq('id', userId),
+  ]);
+  return { error: profileRes.error || userRes.error || null };
+}
+
+export async function adminDeleteUser(userId) {
+  return supabase.rpc('admin_delete_user', { p_user_id: userId });
+}
+
 export async function getFacilityDashboardStats(facilityId) {
   const { data: shifts } = await supabase
     .from('shifts')
