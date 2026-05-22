@@ -18,7 +18,8 @@ export function RegisterPage() {
 
   useEffect(() => {
     if (!authLoading && user && authRole) {
-      navigate(authRole === 'facility' ? '/facility/dashboard' : '/co/dashboard', { replace: true });
+      const dest = authRole === 'admin' ? '/admin/dashboard' : authRole === 'facility' ? '/facility/dashboard' : '/co/dashboard';
+      navigate(dest, { replace: true });
     }
   }, [user, authRole, authLoading, navigate]);
 
@@ -138,7 +139,8 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && user && role) {
-      navigate(role === 'facility' ? '/facility/dashboard' : '/co/dashboard', { replace: true });
+      const dest = role === 'admin' ? '/admin/dashboard' : role === 'facility' ? '/facility/dashboard' : '/co/dashboard';
+      navigate(dest, { replace: true });
     }
   }, [user, role, authLoading, navigate]);
 

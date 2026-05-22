@@ -200,6 +200,90 @@ export async function getCODashboardStats(coId) {
   };
 }
 
+// ── Admin ──
+
+export async function getAdminStats() {
+  const [usersRes, shiftsRes, appsRes] = await Promise.all([
+    supabase.from('users').select('role'),
+    supabase.from('shifts').select('status'),
+    supabase.from('applications').select('status'),
+  ]);
+  const users = usersRes.data || [];
+  const shifts = shiftsRes.data || [];
+  const apps = appsRes.data || [];
+  return {
+    totalFacilities:  users.filter((u) => u.role === 'facility').length,
+    totalWorkers:     users.filter((u) => u.role === 'co').length,
+    totalShifts:      shifts.length,
+    openShifts:       shifts.filter((s) => s.status === 'open').length,
+    filledShifts:     shifts.filter((s) => s.status === 'filled').length,
+    cancelledShifts:  shifts.filter((s) => s.status === 'cancelled').length,
+    totalApps:        apps.length,
+    pendingApps:      apps.filter((a) => a.status === 'pending').length,
+    approvedApps:     apps.filter((a) => a.status === 'approved').length,
+  };
+}
+
+export async function getAdminFacilities() {
+  const { data, error } = await supabase
+    .from('facility_profiles')
+    .select('*, users(email, phone, created_at)')
+    .order('facility_name', { ascending: true });
+  if (error || !data) return { data: [], error };
+
+  const ids = data.map((f) => f.user_id);
+  const { data: shifts } = await supabase.from('shifts').select('facility_id, status').in('facility_id', ids);
+  const shiftMap = {};
+  (shifts || []).forEach((s) => {
+    if (!shiftMap[s.facility_id]) shiftMap[s.facility_id] = { total: 0, open: 0 };
+    shiftMap[s.facility_id].total++;
+    if (s.status === 'open') shiftMap[s.facility_id].open++;
+  });
+  return { data: data.map((f) => ({ ...f, shift_stats: shiftMap[f.user_id] || { total: 0, open: 0 } })), error: null };
+}
+
+export async function getAdminWorkers() {
+  const { data, error } = await supabase
+    .from('co_profiles')
+    .select('*, users(email, phone, display_name, created_at)')
+    .order('user_id', { ascending: true });
+  if (error || !data) return { data: [], error };
+
+  const ids = data.map((c) => c.user_id);
+  const { data: apps } = await supabase.from('applications').select('co_id, status').in('co_id', ids);
+  const appMap = {};
+  (apps || []).forEach((a) => {
+    if (!appMap[a.co_id]) appMap[a.co_id] = { total: 0, approved: 0 };
+    appMap[a.co_id].total++;
+    if (a.status === 'approved') appMap[a.co_id].approved++;
+  });
+  return { data: data.map((c) => ({ ...c, app_stats: appMap[c.user_id] || { total: 0, approved: 0 } })), error: null };
+}
+
+export async function getAdminShifts() {
+  const { data: shifts, error } = await supabase
+    .from('shifts').select('*').order('created_at', { ascending: false });
+  if (error || !shifts) return { data: [], error };
+
+  const facilityIds = [...new Set(shifts.map((s) => s.facility_id))];
+  const shiftIds = shifts.map((s) => s.id);
+  const [{ data: profiles }, { data: apps }] = await Promise.all([
+    supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
+    supabase.from('applications').select('shift_id').in('shift_id', shiftIds),
+  ]);
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const appCountMap = {};
+  (apps || []).forEach((a) => { appCountMap[a.shift_id] = (appCountMap[a.shift_id] || 0) + 1; });
+  return {
+    data: shifts.map((s) => ({
+      ...s,
+      facility_profiles: profileMap[s.facility_id] || null,
+      applicant_count: appCountMap[s.id] || 0,
+    })),
+    error: null,
+  };
+}
+
 export async function getFacilityDashboardStats(facilityId) {
   const { data: shifts } = await supabase
     .from('shifts')

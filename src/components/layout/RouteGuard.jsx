@@ -13,6 +13,12 @@ function Spinner() {
   );
 }
 
+export function dashboardFor(role) {
+  if (role === 'admin') return '/admin/dashboard';
+  if (role === 'facility') return '/facility/dashboard';
+  return '/co/dashboard';
+}
+
 export function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -26,7 +32,7 @@ export function RequireCO({ children }) {
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/auth/login" state={{ from: location }} replace />;
-  if (role !== 'co') return <Navigate to="/facility/dashboard" replace />;
+  if (role !== 'co') return <Navigate to={dashboardFor(role)} replace />;
   return children;
 }
 
@@ -35,6 +41,15 @@ export function RequireFacility({ children }) {
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/auth/login" state={{ from: location }} replace />;
-  if (role !== 'facility') return <Navigate to="/co/dashboard" replace />;
+  if (role !== 'facility') return <Navigate to={dashboardFor(role)} replace />;
+  return children;
+}
+
+export function RequireAdmin({ children }) {
+  const { user, role, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/auth/login" state={{ from: location }} replace />;
+  if (role !== 'admin') return <Navigate to={dashboardFor(role)} replace />;
   return children;
 }

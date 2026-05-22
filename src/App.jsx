@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NavBar } from './components/layout/NavBar';
-import { RequireCO, RequireFacility } from './components/layout/RouteGuard';
+import { RequireCO, RequireFacility, RequireAdmin } from './components/layout/RouteGuard';
 
 import Landing from './pages/Landing';
 import { RegisterPage, LoginPage } from './pages/Auth';
@@ -17,6 +17,11 @@ import PostShift from './pages/facility/PostShift';
 import ManageShifts from './pages/facility/ManageShifts';
 import ShiftDetail from './pages/facility/ShiftDetail';
 import FacilityProfile from './pages/facility/Profile';
+
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminFacilities from './pages/admin/Facilities';
+import AdminWorkers from './pages/admin/Workers';
+import AdminShifts from './pages/admin/Shifts';
 
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
@@ -41,6 +46,12 @@ function AppShell() {
         <Route path="/facility/shifts" element={<RequireFacility><ManageShifts /></RequireFacility>} />
         <Route path="/facility/shifts/:id" element={<RequireFacility><ShiftDetail /></RequireFacility>} />
         <Route path="/facility/profile" element={<RequireFacility><FacilityProfile /></RequireFacility>} />
+
+        <Route path="/admin/dashboard"  element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+        <Route path="/admin/facilities" element={<RequireAdmin><AdminFacilities /></RequireAdmin>} />
+        <Route path="/admin/workers"    element={<RequireAdmin><AdminWorkers /></RequireAdmin>} />
+        <Route path="/admin/shifts"     element={<RequireAdmin><AdminShifts /></RequireAdmin>} />
+        <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
 
         <Route path="/co" element={<Navigate to="/co/dashboard" replace />} />
         <Route path="/facility" element={<Navigate to="/facility/dashboard" replace />} />

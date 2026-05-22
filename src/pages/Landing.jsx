@@ -11,16 +11,10 @@ const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-
 
 export default function Landing() {
   const { t } = useTranslation();
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!authLoading && user && role) {
-      navigate(role === 'co' ? '/co/dashboard' : '/facility/dashboard', { replace: true });
-    }
-  }, [user, role, authLoading, navigate]);
-
-  const [shifts, setShifts] = useState([]);
+const [shifts, setShifts] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [stats, setStats] = useState({ shifts: 0, facilities: 0 });
   const [filter, setFilter] = useState('All');

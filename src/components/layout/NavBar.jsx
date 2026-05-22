@@ -26,7 +26,14 @@ export function NavBar() {
     { to: '/facility/profile',    label: t('nav.profile') },
   ];
 
-  const links = role === 'co' ? coLinks : facilityLinks;
+  const adminLinks = [
+    { to: '/admin/dashboard',  label: t('nav.overview') },
+    { to: '/admin/facilities', label: t('nav.facilities') },
+    { to: '/admin/workers',    label: t('nav.workers') },
+    { to: '/admin/shifts',     label: t('nav.all_shifts') },
+  ];
+
+  const links = role === 'admin' ? adminLinks : role === 'co' ? coLinks : facilityLinks;
   const initials = (user?.display_name || user?.email || '?')
     .split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 

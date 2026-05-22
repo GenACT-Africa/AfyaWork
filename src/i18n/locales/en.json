@@ -6,7 +6,11 @@
     "post_shift": "Post Shift",
     "my_shifts": "My Shifts",
     "profile": "Profile",
-    "sign_out": "Sign out"
+    "sign_out": "Sign out",
+    "overview": "Overview",
+    "facilities": "Facilities",
+    "workers": "Workers",
+    "all_shifts": "All Shifts"
   },
   "landing": {
     "badge": "Dar es Salaam, Tanzania",
