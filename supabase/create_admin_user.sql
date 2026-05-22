@@ -54,7 +54,7 @@ BEGIN
     crypt(admin_pass, gen_salt('bf')),
     now(),
     '{"provider":"email","providers":["email"]}',
-    '{"display_name":"AfyaWork Admin"}',
+    '{"role":"admin","display_name":"AfyaWork Admin"}',
     'authenticated',
     'authenticated',
     now(),
@@ -85,9 +85,9 @@ BEGIN
     now()
   );
 
-  -- Insert into public.users with admin role
-  -- (the normal trigger creates a row for 'co'/'facility' signups,
-  --  but won't run here since we're inserting directly)
+  -- The handle_new_user trigger fires on the auth.users insert above and
+  -- creates the public.users row. This upsert is a safety net to ensure
+  -- role = 'admin' is set correctly regardless.
   INSERT INTO public.users (id, email, role, display_name, created_at, updated_at)
   VALUES (new_id, admin_email, 'admin', 'AfyaWork Admin', now(), now())
   ON CONFLICT (id) DO UPDATE
