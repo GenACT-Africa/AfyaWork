@@ -1,25 +1,29 @@
+import { useTranslation } from 'react-i18next';
+
 const styles = {
-  open:      'bg-green-100 text-green-800',
-  filled:    'bg-blue-100 text-blue-800',
-  cancelled: 'bg-gray-100 text-gray-600',
-  pending:   'bg-yellow-100 text-yellow-800',
-  approved:  'bg-green-100 text-green-800',
-  rejected:  'bg-red-100 text-red-700',
-  msingi:    'bg-gray-100 text-gray-700',
-  daktari:   'bg-teal-100 text-teal-800',
-  bingwa:    'bg-purple-100 text-purple-800',
+  open:      'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  filled:    'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  cancelled: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
+  pending:   'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  approved:  'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  rejected:  'bg-red-50 text-red-600 ring-1 ring-red-200',
+  msingi:    'bg-gray-100 text-gray-600 ring-1 ring-gray-200',
+  daktari:   'bg-teal-50 text-teal-700 ring-1 ring-teal-200',
+  bingwa:    'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
 };
 
-const labels = {
-  open: 'Open', filled: 'Filled', cancelled: 'Cancelled',
-  pending: 'Pending', approved: 'Approved', rejected: 'Rejected',
-  msingi: 'Msingi', daktari: 'Daktari', bingwa: 'Bingwa',
+const dots = {
+  open: 'bg-emerald-500', filled: 'bg-blue-500', cancelled: 'bg-gray-400',
+  pending: 'bg-amber-500', approved: 'bg-emerald-500', rejected: 'bg-red-500',
 };
 
 export function Badge({ status, className = '' }) {
+  const { t } = useTranslation();
+  const label = t(`status.${status}`, { defaultValue: status });
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-700'} ${className}`}>
-      {labels[status] || status}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${styles[status] || 'bg-gray-100 text-gray-600'} ${className}`}>
+      {dots[status] && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dots[status]}`} />}
+      {label}
     </span>
   );
 }

@@ -1,27 +1,30 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, Stethoscope, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, X, Stethoscope, LogOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-
-const coLinks = [
-  { to: '/co/dashboard', label: 'Dashboard' },
-  { to: '/co/shifts', label: 'Browse Shifts' },
-  { to: '/co/applications', label: 'My Applications' },
-  { to: '/co/profile', label: 'Profile' },
-];
-
-const facilityLinks = [
-  { to: '/facility/dashboard', label: 'Dashboard' },
-  { to: '/facility/post-shift', label: 'Post Shift' },
-  { to: '/facility/shifts', label: 'My Shifts' },
-  { to: '/facility/profile', label: 'Profile' },
-];
+import { LanguageToggle } from '../common/LanguageToggle';
 
 export function NavBar() {
   const { user, role, signOut } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const coLinks = [
+    { to: '/co/dashboard',    label: t('nav.dashboard') },
+    { to: '/co/shifts',       label: t('nav.browse_shifts') },
+    { to: '/co/applications', label: t('nav.my_applications') },
+    { to: '/co/profile',      label: t('nav.profile') },
+  ];
+
+  const facilityLinks = [
+    { to: '/facility/dashboard',  label: t('nav.dashboard') },
+    { to: '/facility/post-shift', label: t('nav.post_shift') },
+    { to: '/facility/shifts',     label: t('nav.my_shifts') },
+    { to: '/facility/profile',    label: t('nav.profile') },
+  ];
 
   const links = role === 'co' ? coLinks : facilityLinks;
   const initials = (user?.display_name || user?.email || '?')
@@ -35,54 +38,64 @@ export function NavBar() {
   if (!user) return null;
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <nav className="bg-white/95 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-40 shadow-sm">
       <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between h-14 md:h-16">
+        <div className="flex items-center justify-between h-16">
 
-          {/* Logo → always goes to homepage */}
-          <Link to="/" className="flex items-center gap-2 font-bold text-teal-600 text-base md:text-lg shrink-0">
-            <Stethoscope className="w-5 h-5 md:w-6 md:h-6" />
-            <span>AfyaWork</span>
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 shrink-0 group">
+            <div className="w-8 h-8 bg-gradient-to-br from-teal-600 to-emerald-500 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow transition-shadow">
+              <Stethoscope className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-bold text-gray-900 text-base md:text-lg tracking-tight">
+              Afya<span className="text-teal-600">Work</span>
+            </span>
           </Link>
 
           {/* Desktop nav links */}
           <div className="hidden md:flex items-center gap-0.5">
-            {links.map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap
-                  ${location.pathname === l.to || location.pathname.startsWith(l.to + '/')
-                    ? 'bg-teal-50 text-teal-700'
-                    : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {l.label}
-              </Link>
-            ))}
+            {links.map((l) => {
+              const active = location.pathname === l.to || location.pathname.startsWith(l.to + '/');
+              return (
+                <Link
+                  key={l.to}
+                  to={l.to}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                    ${active
+                      ? 'bg-teal-50 text-teal-700'
+                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
+                >
+                  {l.label}
+                </Link>
+              );
+            })}
           </div>
 
-          {/* Desktop user area */}
+          {/* Desktop right side */}
           <div className="hidden md:flex items-center gap-3">
+            <LanguageToggle />
+            <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shadow-sm shrink-0">
                 {initials}
               </div>
-              <span className="text-sm text-gray-600 max-w-[140px] truncate">
+              <span className="text-sm text-gray-600 max-w-[130px] truncate font-medium">
                 {user.display_name || user.email}
               </span>
             </div>
             <button
               onClick={handleSignOut}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+              title={t('nav.sign_out')}
+              className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             >
               <LogOut className="w-4 h-4" />
-              <span>Sign out</span>
             </button>
           </div>
 
           {/* Mobile: avatar + hamburger */}
           <div className="md:hidden flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center">
+            <LanguageToggle />
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center">
               {initials}
             </div>
             <button
@@ -100,9 +113,8 @@ export function NavBar() {
       {open && (
         <div className="md:hidden border-t border-gray-100 bg-white shadow-lg">
           <div className="px-4 py-3">
-            {/* User info */}
-            <div className="flex items-center gap-3 px-3 py-3 mb-2 bg-gray-50 rounded-xl">
-              <div className="w-10 h-10 rounded-full bg-teal-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-3 px-3 py-3 mb-3 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-xl border border-teal-100">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shrink-0 shadow-sm">
                 {initials}
               </div>
               <div className="min-w-0">
@@ -111,31 +123,30 @@ export function NavBar() {
               </div>
             </div>
 
-            {/* Nav links */}
             <div className="space-y-0.5">
-              {links.map((l) => (
-                <Link
-                  key={l.to}
-                  to={l.to}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-colors
-                    ${location.pathname === l.to || location.pathname.startsWith(l.to + '/')
-                      ? 'bg-teal-50 text-teal-700'
-                      : 'text-gray-700 hover:bg-gray-100'}`}
-                >
-                  {l.label}
-                </Link>
-              ))}
+              {links.map((l) => {
+                const active = location.pathname === l.to || location.pathname.startsWith(l.to + '/');
+                return (
+                  <Link
+                    key={l.to}
+                    to={l.to}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-colors
+                      ${active ? 'bg-teal-50 text-teal-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    {l.label}
+                  </Link>
+                );
+              })}
             </div>
 
-            {/* Sign out */}
-            <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-2 w-full px-3 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
               >
                 <LogOut className="w-4 h-4" />
-                Sign out
+                {t('nav.sign_out')}
               </button>
             </div>
           </div>

@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Stethoscope } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
+import { LanguageToggle } from '../components/common/LanguageToggle';
 
 export function RegisterPage() {
   const [params] = useSearchParams();
   const defaultRole = params.get('role') || 'co';
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { signUp, user, role: authRole, loading: authLoading } = useAuth();
 
   const [role, setRole] = useState(defaultRole);
@@ -18,13 +21,12 @@ export function RegisterPage() {
       navigate(authRole === 'facility' ? '/facility/dashboard' : '/co/dashboard', { replace: true });
     }
   }, [user, authRole, authLoading, navigate]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     email: '', password: '', display_name: '', phone: '',
-    // CO fields
     license_number: '', specialization: '',
-    // Facility fields
     facility_name: '', facility_type: '', address: '',
   });
 
@@ -35,10 +37,9 @@ export function RegisterPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-
-    if (form.password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-    if (role === 'co' && !form.license_number) { setError('License number is required.'); return; }
-    if (role === 'facility' && !form.facility_name) { setError('Facility name is required.'); return; }
+    if (form.password.length < 6) { setError(t('auth.err_password')); return; }
+    if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
+    if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
 
     setLoading(true);
     const payload = {
@@ -50,25 +51,26 @@ export function RegisterPage() {
         ? { license_number: form.license_number, specialization: form.specialization }
         : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address }),
     };
-
     const { error: err } = await signUp(payload);
     setLoading(false);
     if (err) { setError(err.message); return; }
-    // Navigation handled by useEffect once authRole is confirmed
   }
 
   return (
-    <AuthShell title="Create your account" subtitle="Join AfyaWork today">
-      {/* Role toggle */}
-      <div className="flex rounded-lg border border-gray-200 overflow-hidden mb-6">
+    <AuthShell title={t('auth.create_account')} subtitle={t('auth.join_today')}>
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden mb-6 p-1 bg-gray-50">
         {['co', 'facility'].map((r) => (
           <button
             key={r}
             type="button"
             onClick={() => setRole(r)}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${role === r ? 'bg-teal-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
+              role === r
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
-            {r === 'co' ? 'Clinical Officer' : 'Healthcare Facility'}
+            {r === 'co' ? t('auth.co') : t('auth.facility')}
           </button>
         ))}
       </div>
@@ -76,47 +78,51 @@ export function RegisterPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {role === 'co' ? (
           <>
-            <Input label="Full name" value={form.display_name} onChange={set('display_name')} placeholder="Dr. Amina Juma" required />
-            <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
-            <Input label="Password" type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" required />
-            <Input label="Phone (optional)" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
-            <Input label="License number" value={form.license_number} onChange={set('license_number')} placeholder="CO-12345" required />
-            <Select label="Specialization" value={form.specialization} onChange={set('specialization')}>
-              <option value="">Select specialization</option>
-              <option value="General">General Practice</option>
-              <option value="Paediatrics">Paediatrics</option>
-              <option value="Maternity">Maternity / Obstetrics</option>
-              <option value="Surgery">Surgical Assist</option>
-              <option value="Emergency">Emergency / Trauma</option>
+            <Input label={t('auth.full_name')} value={form.display_name} onChange={set('display_name')} placeholder="Dr. Amina Juma" required />
+            <Input label={t('auth.email')} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
+            <Input label={t('auth.password')} type="password" value={form.password} onChange={set('password')} placeholder={t('auth.password_placeholder')} required />
+            <Input label={t('auth.phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+            <Input label={t('auth.license_number')} value={form.license_number} onChange={set('license_number')} placeholder="CO-12345" required />
+            <Select label={t('auth.specialization')} value={form.specialization} onChange={set('specialization')}>
+              <option value="">{t('auth.select_spec')}</option>
+              <option value="General">{t('auth.general')}</option>
+              <option value="Paediatrics">{t('auth.paediatrics')}</option>
+              <option value="Maternity">{t('auth.maternity')}</option>
+              <option value="Surgery">{t('auth.surgery')}</option>
+              <option value="Emergency">{t('auth.emergency')}</option>
             </Select>
           </>
         ) : (
           <>
-            <Input label="Facility name" value={form.facility_name} onChange={set('facility_name')} placeholder="Aga Khan Health Centre" required />
-            <Input label="Contact email" type="email" value={form.email} onChange={set('email')} placeholder="admin@facility.co.tz" required />
-            <Input label="Password" type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" required />
-            <Input label="Contact phone (optional)" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
-            <Select label="Facility type" value={form.facility_type} onChange={set('facility_type')}>
-              <option value="">Select type</option>
-              <option value="Private Clinic">Private Clinic</option>
-              <option value="Hospital">Hospital</option>
-              <option value="Dispensary">Dispensary</option>
-              <option value="Diagnostic Centre">Diagnostic Centre</option>
+            <Input label={t('auth.facility_name')} value={form.facility_name} onChange={set('facility_name')} placeholder="Aga Khan Health Centre" required />
+            <Input label={t('auth.contact_email')} type="email" value={form.email} onChange={set('email')} placeholder="admin@facility.co.tz" required />
+            <Input label={t('auth.password')} type="password" value={form.password} onChange={set('password')} placeholder={t('auth.password_placeholder')} required />
+            <Input label={t('auth.contact_phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+            <Select label={t('auth.facility_type')} value={form.facility_type} onChange={set('facility_type')}>
+              <option value="">{t('auth.select_type')}</option>
+              <option value="Private Clinic">{t('auth.private_clinic')}</option>
+              <option value="Hospital">{t('auth.hospital')}</option>
+              <option value="Dispensary">{t('auth.dispensary')}</option>
+              <option value="Diagnostic Centre">{t('auth.diagnostic')}</option>
             </Select>
-            <Input label="Address" value={form.address} onChange={set('address')} placeholder="Kinondoni, Dar es Salaam" />
+            <Input label={t('auth.address')} value={form.address} onChange={set('address')} placeholder={t('auth.address_placeholder')} />
           </>
         )}
 
-        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+            {error}
+          </div>
+        )}
 
         <Button type="submit" loading={loading} className="w-full" size="lg">
-          Create account
+          {t('auth.create_btn')}
         </Button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 mt-4">
-        Already have an account?{' '}
-        <Link to="/auth/login" className="text-teal-600 font-medium hover:underline">Sign in</Link>
+      <p className="text-center text-sm text-gray-500 mt-5">
+        {t('auth.already_account')}{' '}
+        <Link to="/auth/login" className="text-teal-600 font-semibold hover:underline">{t('auth.sign_in')}</Link>
       </p>
     </AuthShell>
   );
@@ -124,6 +130,7 @@ export function RegisterPage() {
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { signIn, user, role, loading: authLoading } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -146,25 +153,28 @@ export function LoginPage() {
     const { error: err } = await signIn(form);
     setLoading(false);
     if (err) { setError(err.message); return; }
-    // Navigation handled by useEffect once role is confirmed
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Sign in to your AfyaWork account">
+    <AuthShell title={t('auth.welcome_back')} subtitle={t('auth.sign_in_sub')}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
-        <Input label="Password" type="password" value={form.password} onChange={set('password')} placeholder="Your password" required />
+        <Input label={t('auth.email')} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
+        <Input label={t('auth.password')} type="password" value={form.password} onChange={set('password')} placeholder={t('auth.password_placeholder')} required />
 
-        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
+            {error}
+          </div>
+        )}
 
         <Button type="submit" loading={loading} className="w-full" size="lg">
-          Sign in
+          {t('auth.sign_in')}
         </Button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 mt-4">
-        Don&apos;t have an account?{' '}
-        <Link to="/auth/register" className="text-teal-600 font-medium hover:underline">Register</Link>
+      <p className="text-center text-sm text-gray-500 mt-5">
+        {t('auth.no_account')}{' '}
+        <Link to="/auth/register" className="text-teal-600 font-semibold hover:underline">{t('auth.register')}</Link>
       </p>
     </AuthShell>
   );
@@ -172,17 +182,28 @@ export function LoginPage() {
 
 function AuthShell({ title, subtitle, children }) {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 font-bold text-teal-600 text-xl mb-4">
-            <Stethoscope className="w-7 h-7" />
-            AfyaWork
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 flex flex-col items-center justify-center px-4 py-12">
+      {/* Decorative blob */}
+      <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none" />
+
+      <div className="relative w-full max-w-md">
+        <div className="flex items-center justify-between mb-8">
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="w-9 h-9 bg-gradient-to-br from-teal-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+              <Stethoscope className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-white text-lg tracking-tight">
+              Afya<span className="text-teal-400">Work</span>
+            </span>
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-          <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
+          <LanguageToggle variant="pill" />
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <p className="text-gray-500 text-sm mt-1">{subtitle}</p>
+          </div>
           {children}
         </div>
       </div>
