@@ -2,11 +2,17 @@
 -- AfyaWork — Create Admin User via SQL
 -- Run this in the Supabase SQL Editor after admin_setup.sql
 --
--- BEFORE RUNNING: replace 'ChangeMe123!' below with a strong
--- password of your choice.
+-- STEP 1: Run the CLEANUP block below to remove any partial user
+--         from previous failed attempts.
+-- STEP 2: Replace 'ChangeMe123!' with your chosen password.
+-- STEP 3: Run the full file.
 -- ============================================================
 
--- 1. Allow 'admin' as a valid role (schema only had 'co'/'facility')
+-- ── STEP 1: Clean up any partial user from previous attempts ──
+DELETE FROM auth.users WHERE email = 'admin@genactafrica.org';
+-- Cascades automatically to auth.identities and public.users
+
+-- ── STEP 2: Allow 'admin' as a valid role ──
 ALTER TABLE public.users
   DROP CONSTRAINT IF EXISTS users_role_check;
 
@@ -14,22 +20,14 @@ ALTER TABLE public.users
   ADD CONSTRAINT users_role_check
   CHECK (role IN ('co', 'facility', 'admin'));
 
--- 2. Create the admin user (wrapped in a transaction)
+-- ── STEP 3: Create the admin user ──
 DO $$
 DECLARE
-  new_id uuid := gen_random_uuid();
+  new_id       uuid := gen_random_uuid();
+  identity_id  uuid := gen_random_uuid();   -- separate ID for the identity row
   admin_email  text := 'admin@genactafrica.org';
-  admin_pass   text := 'ChangeMe123!';   -- ← change this
+  admin_pass   text := 'ChangeMe123!';      -- ← change this before running
 BEGIN
-
-  -- Guard: skip if this email already exists in auth
-  IF EXISTS (SELECT 1 FROM auth.users WHERE email = admin_email) THEN
-    RAISE NOTICE 'User % already exists in auth.users — skipping insert.', admin_email;
-    -- Still make sure public.users has the admin role
-    UPDATE public.users SET role = 'admin', display_name = 'AfyaWork Admin'
-    WHERE email = admin_email;
-    RETURN;
-  END IF;
 
   -- Insert into auth.users
   INSERT INTO auth.users (
@@ -64,7 +62,7 @@ BEGIN
     false
   );
 
-  -- Insert into auth.identities (required for email login)
+  -- Insert into auth.identities — email_verified is required for sign-in to work
   INSERT INTO auth.identities (
     id,
     user_id,
@@ -75,9 +73,14 @@ BEGIN
     updated_at,
     last_sign_in_at
   ) VALUES (
+    identity_id,
     new_id,
-    new_id,
-    jsonb_build_object('sub', new_id::text, 'email', admin_email),
+    jsonb_build_object(
+      'sub',            new_id::text,
+      'email',          admin_email,
+      'email_verified', true,
+      'phone_verified', false
+    ),
     'email',
     admin_email,
     now(),
@@ -85,14 +88,13 @@ BEGIN
     now()
   );
 
-  -- The handle_new_user trigger fires on the auth.users insert above and
-  -- creates the public.users row. This upsert is a safety net to ensure
-  -- role = 'admin' is set correctly regardless.
+  -- The handle_new_user trigger fires on the auth.users insert and creates
+  -- the public.users row. This upsert ensures role = 'admin' is set correctly.
   INSERT INTO public.users (id, email, role, display_name, created_at, updated_at)
   VALUES (new_id, admin_email, 'admin', 'AfyaWork Admin', now(), now())
   ON CONFLICT (id) DO UPDATE
     SET role = 'admin', display_name = 'AfyaWork Admin';
 
-  RAISE NOTICE 'Admin user created successfully with id = %', new_id;
+  RAISE NOTICE 'Admin user created with id = %', new_id;
 END;
 $$;
