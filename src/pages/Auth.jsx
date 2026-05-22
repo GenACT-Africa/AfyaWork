@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Stethoscope } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -9,9 +9,15 @@ export function RegisterPage() {
   const [params] = useSearchParams();
   const defaultRole = params.get('role') || 'co';
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const { signUp, user, role: authRole, loading: authLoading } = useAuth();
 
   const [role, setRole] = useState(defaultRole);
+
+  useEffect(() => {
+    if (!authLoading && user && authRole) {
+      navigate(authRole === 'facility' ? '/facility/dashboard' : '/co/dashboard', { replace: true });
+    }
+  }, [user, authRole, authLoading, navigate]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
@@ -48,7 +54,7 @@ export function RegisterPage() {
     const { error: err } = await signUp(payload);
     setLoading(false);
     if (err) { setError(err.message); return; }
-    navigate(role === 'co' ? '/co/dashboard' : '/facility/dashboard');
+    // Navigation handled by useEffect once authRole is confirmed
   }
 
   return (
@@ -118,10 +124,16 @@ export function RegisterPage() {
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, user, role, loading: authLoading } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!authLoading && user && role) {
+      navigate(role === 'facility' ? '/facility/dashboard' : '/co/dashboard', { replace: true });
+    }
+  }, [user, role, authLoading, navigate]);
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -131,11 +143,10 @@ export function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { data, error: err } = await signIn(form);
+    const { error: err } = await signIn(form);
     setLoading(false);
     if (err) { setError(err.message); return; }
-    const role = data?.user?.user_metadata?.role;
-    navigate(role === 'facility' ? '/facility/dashboard' : '/co/dashboard');
+    // Navigation handled by useEffect once role is confirmed
   }
 
   return (
