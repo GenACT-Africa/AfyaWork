@@ -1,24 +1,58 @@
 import { useEffect, useState } from 'react';
-import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
-import { getAdminFacilities, adminCreateFacility, adminUpdateFacility, adminDeleteUser } from '../../lib/api';
+import {
+  getAdminFacilities,
+  adminCreateFacility,
+  adminUpdateFacility,
+  adminDeleteUser,
+  adminResendInvite,
+} from '../../lib/api';
 
-const BLANK = { email: '', password: '', facility_name: '', facility_type: '', address: '', phone: '' };
+const BLANK = { email: '', facility_name: '', facility_type: '', address: '', phone: '' };
 
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function Modal({ title, onClose, children }) {
+function StatusBadge({ status }) {
+  if (status === 'pending_invite') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+        Invite pending
+      </span>
+    );
+  }
+  if (status === 'expired') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-xs font-medium border border-red-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+        Invite expired
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+      Active
+    </span>
+  );
+}
+
+function Modal({ title, subtitle, onClose, children }) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+            {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+          </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -42,13 +76,22 @@ export default function AdminFacilities() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [resendingId, setResendingId] = useState(null);
+  const [toast, setToast] = useState('');
+
   async function load() {
+    setLoading(true);
     const { data } = await getAdminFacilities();
     setFacilities(data || []);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []);
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3500);
+  }
 
   const filtered = facilities.filter((f) => {
     const q = search.toLowerCase();
@@ -72,12 +115,11 @@ export default function AdminFacilities() {
 
   function openEdit(f) {
     setForm({
-      email: f.users?.email || '',
-      password: '',
+      email:         f.users?.email || '',
       facility_name: f.facility_name || '',
       facility_type: f.facility_type || '',
-      address: f.address || '',
-      phone: f.users?.phone || '',
+      address:       f.address || '',
+      phone:         f.users?.phone || '',
     });
     setFormError('');
     setModal({ mode: 'edit', userId: f.user_id });
@@ -87,18 +129,19 @@ export default function AdminFacilities() {
     e.preventDefault();
     setFormError('');
     if (!form.facility_name.trim()) { setFormError('Facility name is required.'); return; }
-    if (modal.mode === 'add') {
-      if (!form.email.trim()) { setFormError('Email is required.'); return; }
-      if (form.password.length < 6) { setFormError('Password must be at least 6 characters.'); return; }
-    }
+    if (modal.mode === 'add' && !form.email.trim()) { setFormError('Email is required.'); return; }
+
     setSaving(true);
     const { error } = modal.mode === 'add'
       ? await adminCreateFacility(form)
       : await adminUpdateFacility(modal.userId, form);
     setSaving(false);
+
     if (error) { setFormError(error.message); return; }
+
     setModal(null);
     load();
+    if (modal.mode === 'add') showToast('Facility created — invite email sent.');
   }
 
   async function handleDelete() {
@@ -107,6 +150,18 @@ export default function AdminFacilities() {
     setDeleting(false);
     setDeleteTarget(null);
     load();
+  }
+
+  async function handleResend(f) {
+    setResendingId(f.user_id);
+    const { error } = await adminResendInvite(f.user_id);
+    setResendingId(null);
+    if (error) {
+      showToast(`Failed: ${error.message}`);
+    } else {
+      showToast(`Invite resent to ${f.users?.email}`);
+      load();
+    }
   }
 
   return (
@@ -119,6 +174,13 @@ export default function AdminFacilities() {
         </Button>
       }
     >
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-5 py-2.5 rounded-xl shadow-lg animate-fade-in">
+          {toast}
+        </div>
+      )}
+
       {/* Search */}
       <div className="relative mb-6 max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -148,69 +210,87 @@ export default function AdminFacilities() {
               <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wider">
                 <th className="text-left px-5 py-4 font-semibold">Facility</th>
                 <th className="text-left px-5 py-4 font-semibold">Contact</th>
+                <th className="text-left px-5 py-4 font-semibold">Status</th>
                 <th className="text-left px-5 py-4 font-semibold">Shifts</th>
                 <th className="text-left px-5 py-4 font-semibold">Joined</th>
                 <th className="px-5 py-4" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((f) => (
-                <tr key={f.user_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
-                        <Building2 className="w-4 h-4 text-white" />
+              {filtered.map((f) => {
+                const acctStatus = f.users?.account_status || 'active';
+                const isPending = acctStatus === 'pending_invite' || acctStatus === 'expired';
+                return (
+                  <tr key={f.user_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
+                          <Building2 className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{f.facility_name}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>
+                          {f.address && (
+                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3" />{f.address}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">{f.facility_name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>
-                        {f.address && (
-                          <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3" />{f.address}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <p className="flex items-center gap-1.5 text-gray-600">
-                      <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      {f.users?.email || '—'}
-                    </p>
-                    {f.users?.phone && (
-                      <p className="flex items-center gap-1.5 text-gray-500 text-xs mt-1">
-                        <Phone className="w-3 h-3 text-gray-400 shrink-0" />
-                        {f.users.phone}
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="flex items-center gap-1.5 text-gray-600">
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        {f.users?.email || '—'}
                       </p>
-                    )}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold">
-                      {f.shift_stats?.open || 0} open
-                    </span>
-                    <p className="text-xs text-gray-400 mt-1">{f.shift_stats?.total || 0} total</p>
-                  </td>
-                  <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(f.users?.created_at)}</td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => openEdit(f)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(f)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      {f.users?.phone && (
+                        <p className="flex items-center gap-1.5 text-gray-500 text-xs mt-1">
+                          <Phone className="w-3 h-3 text-gray-400 shrink-0" />
+                          {f.users.phone}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <StatusBadge status={acctStatus} />
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold">
+                        {f.shift_stats?.open || 0} open
+                      </span>
+                      <p className="text-xs text-gray-400 mt-1">{f.shift_stats?.total || 0} total</p>
+                    </td>
+                    <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(f.users?.created_at)}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-1 justify-end">
+                        {isPending && (
+                          <button
+                            onClick={() => handleResend(f)}
+                            disabled={resendingId === f.user_id}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                            title="Resend invite"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openEdit(f)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(f)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -218,21 +298,35 @@ export default function AdminFacilities() {
 
       {/* Add / Edit Modal */}
       {modal && (
-        <Modal title={modal.mode === 'add' ? 'Add Facility' : 'Edit Facility'} onClose={() => setModal(null)}>
+        <Modal
+          title={modal.mode === 'add' ? 'Add Facility' : 'Edit Facility'}
+          subtitle={modal.mode === 'add' ? 'An invite email will be sent automatically.' : undefined}
+          onClose={() => setModal(null)}
+        >
           <form onSubmit={handleSave} className="space-y-4">
-            {modal.mode === 'add' && (
-              <>
-                <Input label="Email" type="email" value={form.email} onChange={set('email')} placeholder="facility@example.com" required />
-                <Input label="Temporary Password" type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" required />
-              </>
-            )}
-            {modal.mode === 'edit' && (
+            {modal.mode === 'add' ? (
+              <Input
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={set('email')}
+                placeholder="facility@example.com"
+                required
+              />
+            ) : (
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-700">Email</label>
                 <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg">{form.email}</p>
               </div>
             )}
-            <Input label="Facility Name" value={form.facility_name} onChange={set('facility_name')} placeholder="Aga Khan Health Centre" required />
+
+            <Input
+              label="Facility Name"
+              value={form.facility_name}
+              onChange={set('facility_name')}
+              placeholder="Aga Khan Health Centre"
+              required
+            />
             <Select label="Facility Type" value={form.facility_type} onChange={set('facility_type')}>
               <option value="">Select type…</option>
               <option value="Private Clinic">Private Clinic</option>
@@ -248,9 +342,11 @@ export default function AdminFacilities() {
             )}
 
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancel</Button>
+              <Button type="button" variant="secondary" className="flex-1" onClick={() => setModal(null)}>
+                Cancel
+              </Button>
               <Button type="submit" className="flex-1" loading={saving}>
-                {modal.mode === 'add' ? 'Create Facility' : 'Save Changes'}
+                {modal.mode === 'add' ? 'Create & Send Invite' : 'Save Changes'}
               </Button>
             </div>
           </form>

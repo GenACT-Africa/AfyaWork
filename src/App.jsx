@@ -23,10 +23,13 @@ import AdminFacilities from './pages/admin/Facilities';
 import AdminWorkers from './pages/admin/Workers';
 import AdminShifts from './pages/admin/Shifts';
 
+import InviteSetup from './pages/InviteSetup';
+import InvitePending from './pages/InvitePending';
+
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
   const { pathname } = useLocation();
-  const showNav = pathname !== '/' && !pathname.startsWith('/auth');
+  const showNav = pathname !== '/' && !pathname.startsWith('/auth') && !pathname.startsWith('/invite');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -52,6 +55,10 @@ function AppShell() {
         <Route path="/admin/workers"    element={<RequireAdmin><AdminWorkers /></RequireAdmin>} />
         <Route path="/admin/shifts"     element={<RequireAdmin><AdminShifts /></RequireAdmin>} />
         <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
+
+        {/* Invite flow — no auth guard, no NavBar */}
+        <Route path="/invite/setup"   element={<InviteSetup />} />
+        <Route path="/invite/pending" element={<InvitePending />} />
 
         <Route path="/co" element={<Navigate to="/co/dashboard" replace />} />
         <Route path="/facility" element={<Navigate to="/facility/dashboard" replace />} />

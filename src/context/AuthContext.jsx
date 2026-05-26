@@ -7,17 +7,24 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [accountStatus, setAccountStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function fetchUserRole(authUser) {
-    if (!authUser) { setUser(null); setRole(null); return; }
+    if (!authUser) {
+      setUser(null);
+      setRole(null);
+      setAccountStatus(null);
+      return;
+    }
     const { data } = await supabase
       .from('users')
-      .select('role, display_name, phone')
+      .select('role, display_name, phone, account_status')
       .eq('id', authUser.id)
       .single();
     setUser({ ...authUser, ...data });
     setRole(data?.role || null);
+    setAccountStatus(data?.account_status || 'active');
   }
 
   useEffect(() => {
@@ -55,10 +62,11 @@ export function AuthProvider({ children }) {
     setUser(null);
     setRole(null);
     setSession(null);
+    setAccountStatus(null);
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, role, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, accountStatus, loading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -28,19 +28,21 @@ export function RequireAuth({ children }) {
 }
 
 export function RequireCO({ children }) {
-  const { user, role, loading } = useAuth();
+  const { user, role, accountStatus, loading } = useAuth();
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/auth/login" state={{ from: location }} replace />;
+  if (accountStatus === 'pending_invite') return <Navigate to="/invite/pending" replace />;
   if (role !== 'co') return <Navigate to={dashboardFor(role)} replace />;
   return children;
 }
 
 export function RequireFacility({ children }) {
-  const { user, role, loading } = useAuth();
+  const { user, role, accountStatus, loading } = useAuth();
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/auth/login" state={{ from: location }} replace />;
+  if (accountStatus === 'pending_invite') return <Navigate to="/invite/pending" replace />;
   if (role !== 'facility') return <Navigate to={dashboardFor(role)} replace />;
   return children;
 }

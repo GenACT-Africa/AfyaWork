@@ -227,7 +227,7 @@ export async function getAdminStats() {
 export async function getAdminFacilities() {
   const { data, error } = await supabase
     .from('facility_profiles')
-    .select('*, users(email, phone, created_at)')
+    .select('*, users(email, phone, created_at, account_status, invited_at)')
     .order('facility_name', { ascending: true });
   if (error || !data) return { data: [], error };
 
@@ -245,7 +245,7 @@ export async function getAdminFacilities() {
 export async function getAdminWorkers() {
   const { data, error } = await supabase
     .from('co_profiles')
-    .select('*, users(email, phone, display_name, created_at)')
+    .select('*, users(email, phone, display_name, created_at, account_status, invited_at)')
     .order('user_id', { ascending: true });
   if (error || !data) return { data: [], error };
 
@@ -286,26 +286,81 @@ export async function getAdminShifts() {
 
 // ── Admin CRUD ──
 
-export async function adminCreateFacility({ email, password, facility_name, facility_type, address, phone }) {
-  return supabase.rpc('admin_create_facility', {
-    p_email: email,
-    p_password: password,
+/**
+ * Create a facility via admin. Returns { data: { user_id, invite_token, email, display_name, role }, error }
+ * Automatically sends the invite email after creation.
+ */
+export async function adminCreateFacility({ email, facility_name, facility_type, address, phone }) {
+  const { data: result, error } = await supabase.rpc('admin_create_facility', {
+    p_email:         email,
     p_facility_name: facility_name,
     p_facility_type: facility_type || null,
-    p_address: address || null,
-    p_phone: phone || null,
+    p_address:       address || null,
+    p_phone:         phone || null,
   });
+  if (error) return { data: null, error };
+
+  // Fire invite email (best-effort — don't block on failure)
+  await supabase.functions.invoke('send-invite-email', {
+    body: {
+      email:         result.email,
+      display_name:  result.display_name,
+      role:          result.role,
+      invite_token:  result.invite_token,
+      facility_name: result.display_name,
+    },
+  });
+
+  return { data: result, error: null };
 }
 
-export async function adminCreateWorker({ email, password, display_name, license_number, specialization, phone }) {
-  return supabase.rpc('admin_create_worker', {
-    p_email: email,
-    p_password: password,
-    p_display_name: display_name,
+/**
+ * Create a worker via admin. Returns { data: { user_id, invite_token, email, display_name, role }, error }
+ * Automatically sends the invite email after creation.
+ */
+export async function adminCreateWorker({ email, display_name, license_number, specialization, phone }) {
+  const { data: result, error } = await supabase.rpc('admin_create_worker', {
+    p_email:          email,
+    p_display_name:   display_name,
     p_license_number: license_number,
     p_specialization: specialization || null,
-    p_phone: phone || null,
+    p_phone:          phone || null,
   });
+  if (error) return { data: null, error };
+
+  await supabase.functions.invoke('send-invite-email', {
+    body: {
+      email:        result.email,
+      display_name: result.display_name,
+      role:         result.role,
+      invite_token: result.invite_token,
+    },
+  });
+
+  return { data: result, error: null };
+}
+
+/**
+ * Resend invite to a pending/expired user. Generates a new token and sends the email.
+ */
+export async function adminResendInvite(userId) {
+  const { data: result, error } = await supabase.rpc('admin_resend_invite', {
+    p_user_id: userId,
+  });
+  if (error) return { error };
+
+  await supabase.functions.invoke('send-invite-email', {
+    body: {
+      email:         result.email,
+      display_name:  result.display_name,
+      role:          result.role,
+      invite_token:  result.invite_token,
+      facility_name: result.display_name,
+      is_resend:     true,
+    },
+  });
+
+  return { error: null };
 }
 
 export async function adminUpdateFacility(userId, { facility_name, facility_type, address, phone }) {
