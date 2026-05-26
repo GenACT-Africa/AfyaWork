@@ -2,6 +2,17 @@ import { supabase } from './supabase';
 
 const FEE_RATE = parseFloat(import.meta.env.VITE_PLATFORM_FEE_RATE || '0.186');
 
+// ── WhatsApp helper ───────────────────────────────────────────────
+/**
+ * Fire-and-forget WhatsApp notification.
+ * Never throws — WA messages are best-effort and must not block the UI.
+ */
+function wa(event, shiftId = null, extra = {}) {
+  supabase.functions
+    .invoke('send-whatsapp', { body: { event, shift_id: shiftId, ...extra } })
+    .catch((e) => console.warn('WA notification skipped:', e?.message));
+}
+
 export function calculateFee(coPay) {
   const fee = Math.round(coPay * FEE_RATE);
   return { co_pay: coPay, platform_fee: fee, total_facility_pays: coPay + fee };
@@ -165,7 +176,14 @@ export async function getMyCOApplications(coId) {
 }
 
 export async function approveApplication(applicationId) {
-  return supabase.rpc('approve_application', { application_id: applicationId });
+  const result = await supabase.rpc('approve_application', { application_id: applicationId });
+  if (!result.error) {
+    // Fetch the shift_id so we can pass it to the WA function
+    const { data: app } = await supabase
+      .from('applications').select('shift_id').eq('id', applicationId).single();
+    if (app?.shift_id) wa('shift_offer', app.shift_id);
+  }
+  return result;
 }
 
 export async function rejectApplication(applicationId) {
@@ -179,42 +197,58 @@ export async function rejectApplication(applicationId) {
 
 /** CO accepts the shift offer */
 export async function acceptShiftOffer(shiftId) {
-  return supabase.rpc('accept_shift_offer', { p_shift_id: shiftId });
+  const result = await supabase.rpc('accept_shift_offer', { p_shift_id: shiftId });
+  if (!result.error) wa('offer_accepted', shiftId);
+  return result;
 }
 
 /** CO declines the shift offer (optionally with a reason) */
 export async function declineShiftOffer(shiftId, reason = null) {
-  return supabase.rpc('decline_shift_offer', { p_shift_id: shiftId, p_reason: reason });
+  const result = await supabase.rpc('decline_shift_offer', { p_shift_id: shiftId, p_reason: reason });
+  if (!result.error) wa('offer_declined', shiftId);
+  return result;
 }
 
 /** CO checks in at the start of shift (optionally with GPS coords) */
 export async function coCheckin(shiftId, lat = null, lng = null) {
-  return supabase.rpc('co_checkin', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+  const result = await supabase.rpc('co_checkin', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+  if (!result.error) wa('co_checked_in', shiftId);
+  return result;
 }
 
 /** Facility confirms CO is on-site */
 export async function approveCheckin(shiftId) {
-  return supabase.rpc('approve_checkin', { p_shift_id: shiftId });
+  const result = await supabase.rpc('approve_checkin', { p_shift_id: shiftId });
+  if (!result.error) wa('checkin_approved', shiftId);
+  return result;
 }
 
 /** Facility disputes CO check-in claim */
 export async function disputeCheckin(shiftId, reason) {
-  return supabase.rpc('dispute_checkin', { p_shift_id: shiftId, p_reason: reason });
+  const result = await supabase.rpc('dispute_checkin', { p_shift_id: shiftId, p_reason: reason });
+  if (!result.error) wa('checkin_disputed', shiftId);
+  return result;
 }
 
 /** CO checks out at the end of shift (optionally with GPS coords) */
 export async function coCheckout(shiftId, lat = null, lng = null) {
-  return supabase.rpc('co_checkout', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+  const result = await supabase.rpc('co_checkout', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+  if (!result.error) wa('co_checked_out', shiftId);
+  return result;
 }
 
 /** Facility confirms end of shift → status: completed */
 export async function approveCheckout(shiftId) {
-  return supabase.rpc('approve_checkout', { p_shift_id: shiftId });
+  const result = await supabase.rpc('approve_checkout', { p_shift_id: shiftId });
+  if (!result.error) wa('checkout_approved', shiftId);
+  return result;
 }
 
 /** Facility disputes CO checkout claim */
 export async function disputeCheckout(shiftId, reason) {
-  return supabase.rpc('dispute_checkout', { p_shift_id: shiftId, p_reason: reason });
+  const result = await supabase.rpc('dispute_checkout', { p_shift_id: shiftId, p_reason: reason });
+  if (!result.error) wa('checkout_disputed', shiftId);
+  return result;
 }
 
 /** Submit a star rating after shift completion */
@@ -229,11 +263,13 @@ export async function submitRating(shiftId, rateeId, stars, comment = null) {
 
 /** Admin resolves a disputed shift */
 export async function resolveDispute(shiftId, resolution, note = null) {
-  return supabase.rpc('resolve_dispute', {
+  const result = await supabase.rpc('resolve_dispute', {
     p_shift_id:   shiftId,
     p_resolution: resolution,
     p_note:       note,
   });
+  if (!result.error) wa('dispute_resolved', shiftId, { resolution, note });
+  return result;
 }
 
 // ── Notifications ────────────────────────────────────────────────
@@ -456,6 +492,9 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
   if (error) return { data: null, error };
   if (result?.error) return { data: null, error: { message: result.error } };
 
+  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
+
+  // Email invite (awaited — primary channel)
   await supabase.functions.invoke('send-invite-email', {
     body: {
       email:         result.email,
@@ -465,6 +504,16 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
       facility_name: result.display_name,
     },
   });
+
+  // WhatsApp invite (fire-and-forget — requires phone)
+  if (phone) {
+    wa('invite', null, {
+      to_phone:     phone,
+      display_name: result.display_name,
+      role:         'facility',
+      invite_url:   inviteUrl,
+    });
+  }
 
   return { data: result, error: null };
 }
@@ -476,6 +525,8 @@ export async function adminCreateWorker({ email, display_name, license_number, s
   if (error) return { data: null, error };
   if (result?.error) return { data: null, error: { message: result.error } };
 
+  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
+
   await supabase.functions.invoke('send-invite-email', {
     body: {
       email:        result.email,
@@ -485,6 +536,15 @@ export async function adminCreateWorker({ email, display_name, license_number, s
     },
   });
 
+  if (phone) {
+    wa('invite', null, {
+      to_phone:     phone,
+      display_name: result.display_name,
+      role:         'co',
+      invite_url:   inviteUrl,
+    });
+  }
+
   return { data: result, error: null };
 }
 
@@ -493,6 +553,8 @@ export async function adminResendInvite(userId) {
     p_user_id: userId,
   });
   if (error) return { error };
+
+  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
 
   await supabase.functions.invoke('send-invite-email', {
     body: {
@@ -504,6 +566,18 @@ export async function adminResendInvite(userId) {
       is_resend:     true,
     },
   });
+
+  // Fetch phone for WhatsApp resend
+  const { data: userData } = await supabase
+    .from('users').select('phone').eq('id', userId).single();
+  if (userData?.phone) {
+    wa('invite', null, {
+      to_phone:     userData.phone,
+      display_name: result.display_name,
+      role:         result.role,
+      invite_url:   inviteUrl,
+    });
+  }
 
   return { error: null };
 }
