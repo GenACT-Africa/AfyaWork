@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')!;
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const ADMIN = 'admin@genactafrica.org';
 const APP_URL = 'https://afyawork.netlify.app';
 
@@ -107,18 +107,18 @@ function formatDate(dateStr: string) {
 }
 
 async function sendEmail({ to, cc, subject, html }: { to: string; cc?: string; subject: string; html: string }) {
-  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+  const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sender: { name: 'AfyaWork', email: 'admin@genactafrica.org' },
-      to: [{ email: to }],
-      ...(cc ? { cc: [{ email: cc }] } : {}),
+      from: 'AfyaWork <noreply@afyawork.com>',
+      to: [to],
+      ...(cc ? { cc: [cc] } : {}),
       subject,
-      htmlContent: html,
+      html,
     }),
   });
-  if (!res.ok) console.error('Brevo error:', await res.text());
+  if (!res.ok) console.error('Resend error:', await res.text());
 }
 
 function ok(body: unknown) {
