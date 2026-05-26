@@ -332,12 +332,14 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
           </div>
 
           {/* About */}
-          {co?.bio && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">About</p>
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">About</p>
+            {co?.bio ? (
               <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{co.bio}</p>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-gray-400 italic">This worker hasn't added a bio yet.</p>
+            )}
+          </div>
 
           {/* Application date */}
           <div className="flex items-center gap-2 text-xs text-gray-400 pb-1 border-b border-gray-100">
