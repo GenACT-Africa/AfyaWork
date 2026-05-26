@@ -4,7 +4,17 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const APP_URL = 'https://afyawork.netlify.app';
 const ADMIN_EMAIL = 'admin@genactafrica.org';
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS });
+  }
+
   try {
     const { email, display_name, role, invite_token, facility_name, is_resend } =
       await req.json();
@@ -176,13 +186,13 @@ async function sendEmail({
 function ok(body: unknown) {
   return new Response(JSON.stringify(body), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 }
 
 function err(message: string, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 }
