@@ -5,7 +5,7 @@ import { getFacilityProfile, updateFacilityProfile, updateUserProfile, uploadAva
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Input, Select } from '../../components/common/Input';
+import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
 
@@ -24,7 +24,7 @@ export default function FacilityProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '' });
+  const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '', bio: '' });
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export default function FacilityProfile() {
         facility_name: data?.facility_name || '',
         facility_type: data?.facility_type || '',
         address: data?.address || '',
+        bio: data?.users?.bio || '',
       });
     }).finally(() => setLoading(false));
   }, [user?.id]);
@@ -62,7 +63,7 @@ export default function FacilityProfile() {
     e.preventDefault();
     setSaving(true);
     await Promise.all([
-      updateUserProfile(user.id, { phone: form.phone }),
+      updateUserProfile(user.id, { phone: form.phone, bio: form.bio }),
       updateFacilityProfile(user.id, {
         facility_name: form.facility_name,
         facility_type: form.facility_type,
@@ -133,12 +134,36 @@ export default function FacilityProfile() {
                 <option value="Diagnostic Centre">Diagnostic Centre</option>
               </Select>
               <Input label="Address" value={form.address} onChange={set('address')} placeholder="Kinondoni, Dar es Salaam" />
+
+              {/* About / Bio */}
+              <div>
+                <Textarea
+                  label="About"
+                  value={form.bio}
+                  onChange={set('bio')}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="Tell Clinical Officers about your facility, the environment, specialties, and what makes working with you great…"
+                />
+                <p className="text-xs text-gray-400 text-right mt-1">{form.bio.length}/500</p>
+              </div>
+
               <Button type="submit" loading={saving}>Save Changes</Button>
             </form>
           </Card>
         </div>
 
-        <div>
+        <div className="space-y-4">
+          {/* About preview */}
+          <Card className="p-5">
+            <h2 className="font-semibold text-gray-900 mb-3">About</h2>
+            {form.bio ? (
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{form.bio}</p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No bio yet — add one in the form to the left.</p>
+            )}
+          </Card>
+
           <Card className="p-5">
             <h2 className="font-semibold text-gray-900 mb-4">Subscription Plan</h2>
             <div className="space-y-2">

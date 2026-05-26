@@ -15,7 +15,7 @@ async function attachFacilityProfiles(shifts) {
   const ids = [...new Set(shifts.map((s) => s.facility_id))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name, facility_type, address, users(avatar_url)')
+    .select('user_id, facility_name, facility_type, address, users(avatar_url, bio)')
     .in('user_id', ids);
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
   return shifts.map((s) => ({ ...s, facility_profiles: byId[s.facility_id] || null }));
@@ -71,7 +71,7 @@ export async function getShiftWithApplicants(shiftId) {
   // Fetch applications with user info (direct FK: applications.co_id → users.id)
   const { data: applications, error: appError } = await supabase
     .from('applications')
-    .select('*, users(display_name, phone, email, avatar_url)')
+    .select('*, users(display_name, phone, email, avatar_url, bio)')
     .eq('shift_id', shiftId)
     .order('applied_at', { ascending: true });
 
@@ -127,7 +127,7 @@ export async function getMyCOApplications(coId) {
   const facilityIds = [...new Set(apps.map((a) => a.shifts?.facility_id).filter(Boolean))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name')
+    .select('user_id, facility_name, users(avatar_url, bio)')
     .in('user_id', facilityIds);
 
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
@@ -158,7 +158,7 @@ export async function rejectApplication(applicationId) {
 export async function getCOProfile(userId) {
   return supabase
     .from('co_profiles')
-    .select('*, users(display_name, email, phone, avatar_url)')
+    .select('*, users(display_name, email, phone, avatar_url, bio)')
     .eq('user_id', userId)
     .single();
 }
@@ -166,7 +166,7 @@ export async function getCOProfile(userId) {
 export async function getFacilityProfile(userId) {
   return supabase
     .from('facility_profiles')
-    .select('*, users(display_name, email, phone, avatar_url)')
+    .select('*, users(display_name, email, phone, avatar_url, bio)')
     .eq('user_id', userId)
     .single();
 }

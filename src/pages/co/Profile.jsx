@@ -6,7 +6,7 @@ import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
-import { Input, Select } from '../../components/common/Input';
+import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
 
@@ -24,7 +24,7 @@ export default function COProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [form, setForm] = useState({ display_name: '', phone: '', specialization: '' });
+  const [form, setForm] = useState({ display_name: '', phone: '', specialization: '', bio: '' });
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -36,6 +36,7 @@ export default function COProfile() {
         display_name: data?.users?.display_name || '',
         phone: data?.users?.phone || '',
         specialization: data?.specialization || '',
+        bio: data?.users?.bio || '',
       });
     }).finally(() => setLoading(false));
   }, [user?.id]);
@@ -61,7 +62,7 @@ export default function COProfile() {
     e.preventDefault();
     setSaving(true);
     await Promise.all([
-      updateUserProfile(user.id, { display_name: form.display_name, phone: form.phone }),
+      updateUserProfile(user.id, { display_name: form.display_name, phone: form.phone, bio: form.bio }),
       updateCOProfile(user.id, { specialization: form.specialization }),
     ]);
     setSaving(false);
@@ -129,6 +130,19 @@ export default function COProfile() {
                 <option value="Emergency">Emergency / Trauma</option>
               </Select>
 
+              {/* About / Bio */}
+              <div>
+                <Textarea
+                  label="About"
+                  value={form.bio}
+                  onChange={set('bio')}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="Tell healthcare facilities about yourself, your experience, and what makes you a great Clinical Officer…"
+                />
+                <p className="text-xs text-gray-400 text-right mt-1">{form.bio.length}/500</p>
+              </div>
+
               <div className="flex items-center gap-2 pt-1">
                 <Button type="submit" loading={saving}>Save Changes</Button>
                 {profile?.verified && (
@@ -141,8 +155,19 @@ export default function COProfile() {
           </Card>
         </div>
 
-        {/* Subscription tier */}
-        <div>
+        {/* Sidebar */}
+        <div className="space-y-4">
+          {/* About preview */}
+          <Card className="p-5">
+            <h2 className="font-semibold text-gray-900 mb-3">About</h2>
+            {form.bio ? (
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{form.bio}</p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No bio yet — add one in the form to the left.</p>
+            )}
+          </Card>
+
+          {/* Subscription tier */}
           <Card className="p-5">
             <h2 className="font-semibold text-gray-900 mb-1">Subscription Tier</h2>
             <p className="text-sm text-gray-400 mb-4">Current: <Badge status={profile?.subscription_tier || 'msingi'} /></p>
@@ -173,7 +198,7 @@ export default function COProfile() {
               })}
             </div>
           </Card>
-        </div>
+        </div> {/* end sidebar */}
       </div>
     </PageWrapper>
   );

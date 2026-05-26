@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
     }
     const { data } = await supabase
       .from('users')
-      .select('role, display_name, phone, account_status, avatar_url')
+      .select('role, display_name, phone, account_status, avatar_url, bio')
       .eq('id', authUser.id)
       .single();
     setUser({ ...authUser, ...data });

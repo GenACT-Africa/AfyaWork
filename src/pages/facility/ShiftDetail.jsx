@@ -191,7 +191,10 @@ function ApplicantCard({ app, shiftFilled, onApprove, onReject, approving, rejec
           <div>
             <p className="font-bold text-gray-900">{co?.display_name}</p>
             <p className="text-sm text-gray-500">{profile?.specialization || 'General Practice'} · {t('common.license')} {profile?.license_number}</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            {co?.bio && (
+              <p className="text-xs text-gray-500 italic mt-1 line-clamp-2 leading-relaxed">"{co.bio}"</p>
+            )}
+            <p className="text-xs text-gray-400 mt-1">
               {t('co.applied')} {new Date(app.applied_at).toLocaleDateString('en-TZ', { day: 'numeric', month: 'short' })}
             </p>
           </div>

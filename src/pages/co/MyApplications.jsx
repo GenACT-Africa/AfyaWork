@@ -88,6 +88,9 @@ function ApplicationCard({ app, t }) {
           <div>
             <p className="font-bold text-gray-900 text-base">{shift?.shift_type}</p>
             <p className="text-sm text-gray-500 mt-0.5 font-medium">{facility?.facility_name}</p>
+            {facility?.users?.bio && (
+              <p className="text-xs text-gray-400 italic mt-1 line-clamp-1">"{facility.users.bio}"</p>
+            )}
             <p className="text-sm text-gray-400 mt-1">
               {new Date(shift?.shift_date + 'T00:00:00').toLocaleDateString('en-TZ', {
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',

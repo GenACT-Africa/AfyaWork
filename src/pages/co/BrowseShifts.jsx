@@ -118,6 +118,13 @@ function ShiftCard({ shift, applied, applying, onApply, t }) {
             )}
           </div>
         </div>
+
+        {/* Facility bio */}
+        {facility?.users?.bio && (
+          <p className="text-xs text-gray-500 italic line-clamp-2 mt-1.5 leading-relaxed">
+            "{facility.users.bio}"
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5 text-xs text-gray-500">
