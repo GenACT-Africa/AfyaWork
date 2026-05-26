@@ -3,23 +3,28 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CalendarDays, Clock, Banknote, Users, CheckCircle, XCircle,
   AlertTriangle, Eye, X, Mail, Phone, Award, Star, Zap, Stethoscope,
+  LogIn, LogOut, MessageSquare, Shield,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { getShiftWithApplicants, approveApplication, rejectApplication, cancelShift } from '../../lib/api';
+import {
+  getShiftWithApplicants, approveApplication, rejectApplication, cancelShift,
+  approveCheckin, disputeCheckin, approveCheckout, disputeCheckout, submitRating,
+} from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
+import { StarRating } from '../../components/common/StarRating';
 import { useToast } from '../../components/common/Toast';
 import { supabase } from '../../lib/supabase';
 import { Avatar } from '../../components/common/Avatar';
 
 // ── Tier display config ───────────────────────────────────────────
 const TIER = {
-  msingi:  { label: 'Msingi',  desc: 'Standard matching',   color: 'bg-gray-100 text-gray-700',   icon: Stethoscope },
-  daktari: { label: 'Daktari', desc: 'Priority access',     color: 'bg-blue-50 text-blue-700',    icon: Star },
-  bingwa:  { label: 'Bingwa',  desc: 'First access',        color: 'bg-amber-50 text-amber-700',  icon: Zap },
+  msingi:  { label: 'Msingi',  desc: 'Standard',       color: 'bg-gray-100 text-gray-700',   icon: Stethoscope },
+  daktari: { label: 'Daktari', desc: 'Priority access', color: 'bg-blue-50 text-blue-700',    icon: Star },
+  bingwa:  { label: 'Bingwa',  desc: 'First access',    color: 'bg-amber-50 text-amber-700',  icon: Zap },
 };
 
 // ── Main page ─────────────────────────────────────────────────────
@@ -29,11 +34,17 @@ export default function ShiftDetail() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { show, ToastComponent } = useToast();
-  const [shift, setShift] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+  const [shift, setShift]           = useState(null);
+  const [loading, setLoading]       = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
-  const [cancelModal, setCancelModal] = useState(false);
-  const [modalApp, setModalApp] = useState(null);
+  const [cancelModal, setCancelModal]   = useState(false);
+  const [modalApp, setModalApp]         = useState(null);
+  const [disputeModal, setDisputeModal] = useState(null); // 'checkin' | 'checkout'
+  const [disputeReason, setDisputeReason] = useState('');
+  const [ratingModal, setRatingModal]   = useState(false);
+  const [ratingStars, setRatingStars]   = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
 
   const loadShift = useCallback(async () => {
     const { data, error } = await getShiftWithApplicants(id);
@@ -50,6 +61,7 @@ export default function ShiftDetail() {
     const channel = supabase
       .channel(`shift-${id}-applications`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'applications', filter: `shift_id=eq.${id}` }, () => loadShift())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts', filter: `id=eq.${id}` }, () => loadShift())
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [id, loadShift]);
@@ -81,12 +93,83 @@ export default function ShiftDetail() {
     navigate('/facility/shifts');
   }
 
+  async function handleApproveCheckin() {
+    setActionLoading('approve-checkin');
+    const { error } = await approveCheckin(id);
+    setActionLoading(null);
+    if (error) { show(error.message || 'Failed.', 'error'); return; }
+    show('Check-in confirmed! Shift is now in progress.');
+    loadShift();
+  }
+
+  async function handleDisputeCheckin() {
+    if (!disputeReason.trim()) { show('Please provide a reason.', 'error'); return; }
+    setActionLoading('dispute-checkin');
+    const { error } = await disputeCheckin(id, disputeReason);
+    setActionLoading(null);
+    if (error) { show(error.message || 'Failed.', 'error'); return; }
+    setDisputeModal(null); setDisputeReason('');
+    show('Dispute raised. Admin will review shortly.');
+    loadShift();
+  }
+
+  async function handleApproveCheckout() {
+    setActionLoading('approve-checkout');
+    const { error } = await approveCheckout(id);
+    setActionLoading(null);
+    if (error) { show(error.message || 'Failed.', 'error'); return; }
+    show('Checkout confirmed! Shift is now complete.');
+    loadShift();
+  }
+
+  async function handleDisputeCheckout() {
+    if (!disputeReason.trim()) { show('Please provide a reason.', 'error'); return; }
+    setActionLoading('dispute-checkout');
+    const { error } = await disputeCheckout(id, disputeReason);
+    setActionLoading(null);
+    if (error) { show(error.message || 'Failed.', 'error'); return; }
+    setDisputeModal(null); setDisputeReason('');
+    show('Dispute raised. Admin will review shortly.');
+    loadShift();
+  }
+
+  async function handleRate() {
+    if (ratingStars === 0) { show('Please select a rating.', 'error'); return; }
+    setActionLoading('rate');
+    const { error } = await submitRating(id, shift.assigned_co_id, ratingStars, ratingComment || null);
+    setActionLoading(null);
+    if (error) { show(error.message || 'Failed.', 'error'); return; }
+    setRatingModal(false);
+    show('Thank you for your feedback!', 'success');
+    loadShift();
+  }
+
   if (loading) return <ShiftDetailSkeleton />;
 
-  const applicants = shift.applicants || [];
-  const isFilled    = shift.status === 'filled';
-  const isCancelled = shift.status === 'cancelled';
-  const isOpen      = shift.status === 'open';
+  const applicants  = shift.applicants || [];
+  const ratings     = shift.ratings    || [];
+  const shiftStatus = shift.status;
+
+  const isFilled    = shiftStatus === 'filled';
+  const isCancelled = shiftStatus === 'cancelled';
+  const isOpen      = shiftStatus === 'open';
+
+  const isPendingCheckin  = shiftStatus === 'pending_checkin_approval';
+  const isInProgress      = shiftStatus === 'in_progress';
+  const isPendingCheckout = shiftStatus === 'pending_checkout_approval';
+  const isCompleted       = shiftStatus === 'completed';
+  const isDisputed        = ['disputed_checkin', 'disputed_checkout'].includes(shiftStatus);
+  const isNoShow          = shiftStatus === 'no_show';
+  const isConfirmed       = shiftStatus === 'confirmed';
+
+  // Find the approved applicant (CO) details
+  const approvedApp = applicants.find((a) => a.status === 'approved');
+  const assignedCO  = approvedApp?.users;
+
+  // Has the facility already rated the CO?
+  const facilityRating = ratings.find((r) => r.rater_id === user?.id && r.rating_type === 'facility_rates_co');
+
+  const shiftCanReceiveActions = !isOpen && !isCancelled && !isCompleted && !isNoShow;
 
   return (
     <PageWrapper>
@@ -97,12 +180,12 @@ export default function ShiftDetail() {
       </Link>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Shift info card */}
+        {/* ── Left: Shift info ── */}
         <div className="lg:col-span-1 space-y-4">
           <Card className="p-6 space-y-5">
             <div className="flex items-start justify-between">
               <h1 className="text-xl font-bold text-gray-900">{shift.shift_type}</h1>
-              <Badge status={shift.status} />
+              <Badge status={shiftStatus} />
             </div>
 
             <div className="space-y-3">
@@ -129,9 +212,123 @@ export default function ShiftDetail() {
               </Button>
             )}
           </Card>
+
+          {/* ── Lifecycle action panels ── */}
+
+          {/* CONFIRMED */}
+          {isConfirmed && assignedCO && (
+            <LifecycleCard color="indigo" icon={<CheckCircle className="w-5 h-5 text-indigo-600" />}>
+              <p className="font-bold text-indigo-900">CO confirmed attendance</p>
+              <p className="text-sm text-indigo-700 mt-1">
+                <strong>{assignedCO.display_name}</strong> accepted the offer and will show up on shift day.
+              </p>
+            </LifecycleCard>
+          )}
+
+          {/* PENDING CHECKIN APPROVAL */}
+          {isPendingCheckin && assignedCO && (
+            <LifecycleCard color="amber" icon={<LogIn className="w-5 h-5 text-amber-700" />}>
+              <p className="font-bold text-amber-900">CO has checked in</p>
+              <p className="text-sm text-amber-700 mt-1">
+                <strong>{assignedCO.display_name}</strong> checked in
+                {shift.checkin_at && (
+                  <span className="ml-1">at {new Date(shift.checkin_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}</span>
+                )}. Confirm they are on-site.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" loading={actionLoading === 'approve-checkin'} disabled={!!actionLoading}
+                  onClick={handleApproveCheckin}>
+                  <CheckCircle className="w-4 h-4" /> Confirm Check-in
+                </Button>
+                <Button variant="secondary" size="sm" disabled={!!actionLoading}
+                  onClick={() => { setDisputeModal('checkin'); setDisputeReason(''); }}>
+                  <AlertTriangle className="w-4 h-4" /> Dispute
+                </Button>
+              </div>
+            </LifecycleCard>
+          )}
+
+          {/* IN PROGRESS */}
+          {isInProgress && (
+            <LifecycleCard color="teal" icon={<LogIn className="w-5 h-5 text-teal-600" />}>
+              <p className="font-bold text-teal-900">Shift in progress 🟢</p>
+              <p className="text-sm text-teal-700 mt-1">
+                {assignedCO?.display_name} is on-site. Waiting for checkout.
+                {shift.checkin_approved_at && (
+                  <span className="block text-xs mt-0.5">
+                    Started {new Date(shift.checkin_approved_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}
+                  </span>
+                )}
+              </p>
+            </LifecycleCard>
+          )}
+
+          {/* PENDING CHECKOUT APPROVAL */}
+          {isPendingCheckout && assignedCO && (
+            <LifecycleCard color="orange" icon={<LogOut className="w-5 h-5 text-orange-700" />}>
+              <p className="font-bold text-orange-900">CO has checked out</p>
+              <p className="text-sm text-orange-700 mt-1">
+                <strong>{assignedCO.display_name}</strong> checked out
+                {shift.checkout_at && (
+                  <span className="ml-1">at {new Date(shift.checkout_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}</span>
+                )}. Confirm to mark shift as complete.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <Button size="sm" loading={actionLoading === 'approve-checkout'} disabled={!!actionLoading}
+                  onClick={handleApproveCheckout}>
+                  <CheckCircle className="w-4 h-4" /> Confirm Checkout
+                </Button>
+                <Button variant="secondary" size="sm" disabled={!!actionLoading}
+                  onClick={() => { setDisputeModal('checkout'); setDisputeReason(''); }}>
+                  <AlertTriangle className="w-4 h-4" /> Dispute
+                </Button>
+              </div>
+            </LifecycleCard>
+          )}
+
+          {/* COMPLETED */}
+          {isCompleted && (
+            <LifecycleCard color="emerald" icon={<CheckCircle className="w-5 h-5 text-emerald-600" />}>
+              <p className="font-bold text-emerald-900">Shift complete! 🎉</p>
+              {facilityRating ? (
+                <div className="mt-2">
+                  <p className="text-sm text-emerald-700 mb-1">Your rating for {assignedCO?.display_name}:</p>
+                  <StarRating value={facilityRating.stars} readonly size="sm" />
+                </div>
+              ) : assignedCO ? (
+                <div className="mt-2">
+                  <p className="text-sm text-emerald-700 mb-2">Rate your experience with this CO.</p>
+                  <Button size="sm" onClick={() => setRatingModal(true)}>
+                    <Star className="w-4 h-4" /> Rate CO
+                  </Button>
+                </div>
+              ) : null}
+            </LifecycleCard>
+          )}
+
+          {/* DISPUTED */}
+          {isDisputed && (
+            <LifecycleCard color="red" icon={<Shield className="w-5 h-5 text-red-600" />}>
+              <p className="font-bold text-red-900">Dispute under review</p>
+              <p className="text-sm text-red-700 mt-1">
+                Admin has been notified and will resolve this dispute.
+                {shift.dispute_reason && (
+                  <span className="block text-xs mt-1 italic">"{shift.dispute_reason}"</span>
+                )}
+              </p>
+            </LifecycleCard>
+          )}
+
+          {/* NO SHOW */}
+          {isNoShow && (
+            <LifecycleCard color="gray" icon={<AlertTriangle className="w-5 h-5 text-gray-500" />}>
+              <p className="font-bold text-gray-800">No-show recorded</p>
+              <p className="text-sm text-gray-600 mt-1">Admin reviewed the dispute and recorded a no-show for this CO.</p>
+            </LifecycleCard>
+          )}
         </div>
 
-        {/* Applicants */}
+        {/* ── Right: Applicants ── */}
         <div className="lg:col-span-2">
           <h2 className="text-lg font-bold text-gray-900 mb-4">
             {t('facility.applicants_count', { count: applicants.length })}
@@ -151,7 +348,7 @@ export default function ShiftDetail() {
                 <ApplicantCard
                   key={app.id}
                   app={app}
-                  shiftFilled={isFilled || isCancelled}
+                  shiftFilled={!isOpen}
                   onViewProfile={() => setModalApp(app)}
                   onApprove={() => handleApprove(app.id)}
                   onReject={() => handleReject(app.id)}
@@ -165,11 +362,11 @@ export default function ShiftDetail() {
         </div>
       </div>
 
-      {/* Applicant profile modal */}
+      {/* ── Applicant profile modal ── */}
       {modalApp && (
         <ApplicantModal
           app={modalApp}
-          shiftFilled={isFilled || isCancelled}
+          shiftFilled={!isOpen}
           onClose={() => setModalApp(null)}
           onApprove={() => { setModalApp(null); handleApprove(modalApp.id); }}
           onReject={() => { setModalApp(null); handleReject(modalApp.id); }}
@@ -179,7 +376,7 @@ export default function ShiftDetail() {
         />
       )}
 
-      {/* Cancel shift modal */}
+      {/* ── Cancel shift modal ── */}
       {cancelModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -201,11 +398,110 @@ export default function ShiftDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Dispute modal ── */}
+      {disputeModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setDisputeModal(null); setDisputeReason(''); } }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Raise a dispute</h2>
+                <p className="text-xs text-gray-500">
+                  {disputeModal === 'checkin' ? 'CO claims to be on-site but isn\'t?' : 'CO claims to have completed but you disagree?'}
+                </p>
+              </div>
+            </div>
+            <textarea
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              placeholder="Describe what happened…"
+              rows={4}
+              className="w-full text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none mb-4"
+            />
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1"
+                onClick={() => { setDisputeModal(null); setDisputeReason(''); }}>
+                Cancel
+              </Button>
+              <Button variant="danger" className="flex-1"
+                loading={actionLoading === `dispute-${disputeModal}`}
+                onClick={disputeModal === 'checkin' ? handleDisputeCheckin : handleDisputeCheckout}>
+                Submit Dispute
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rating modal ── */}
+      {ratingModal && assignedCO && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setRatingModal(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <Avatar src={assignedCO.avatar_url} name={assignedCO.display_name} size="md" />
+              <div>
+                <h3 className="font-bold text-gray-900">Rate {assignedCO.display_name}</h3>
+                <p className="text-xs text-gray-500">Your feedback helps improve AfyaWork.</p>
+              </div>
+            </div>
+
+            <div className="mb-4 flex flex-col items-center gap-2">
+              <StarRating value={ratingStars} onChange={setRatingStars} size="lg" />
+              <p className="text-xs text-gray-400">
+                {ratingStars === 0 ? 'Tap a star to rate' : ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'][ratingStars]}
+              </p>
+            </div>
+
+            <textarea
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              placeholder="Leave a comment (optional)"
+              rows={3}
+              className="w-full text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none mb-4"
+            />
+
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1" onClick={() => setRatingModal(false)}>Cancel</Button>
+              <Button className="flex-1" loading={actionLoading === 'rate'} disabled={ratingStars === 0} onClick={handleRate}>
+                <MessageSquare className="w-4 h-4" /> Submit Rating
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageWrapper>
   );
 }
 
-// ── Applicant summary card (list view) ────────────────────────────
+// ── Lifecycle card (left sidebar) ─────────────────────────────────
+
+const CARD_COLORS = {
+  indigo:  'border-indigo-100 bg-indigo-50',
+  amber:   'border-amber-200 bg-amber-50',
+  teal:    'border-teal-100 bg-teal-50',
+  orange:  'border-orange-200 bg-orange-50',
+  emerald: 'border-emerald-100 bg-emerald-50',
+  red:     'border-red-200 bg-red-50',
+  gray:    'border-gray-200 bg-gray-50',
+};
+
+function LifecycleCard({ color, icon, children }) {
+  return (
+    <div className={`rounded-2xl border p-5 ${CARD_COLORS[color] || CARD_COLORS.gray}`}>
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0">{icon}</div>
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Applicant summary card ────────────────────────────────────────
 function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, approving, rejecting, t }) {
   const co      = app.users;
   const profile = app.co_profiles;
@@ -214,7 +510,6 @@ function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, a
   return (
     <Card className={`p-5 transition-all ${isApproved ? 'border-emerald-200 bg-emerald-50/20' : 'hover:shadow-md'}`}>
       <div className="flex items-start justify-between gap-4">
-        {/* Left: avatar + key info */}
         <div className="flex items-start gap-3 min-w-0">
           <Avatar src={co?.avatar_url} name={co?.display_name} size="lg" />
           <div className="min-w-0">
@@ -230,12 +525,9 @@ function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, a
             </p>
           </div>
         </div>
-
-        {/* Right: badge */}
         <Badge status={app.status} />
       </div>
 
-      {/* Contact strip (approved) */}
       {isApproved && (co?.email || co?.phone) && (
         <div className="mt-4 pt-4 border-t border-emerald-100 bg-emerald-50 rounded-xl px-4 py-3 text-sm text-emerald-800 space-y-1">
           {co.email && <p>Email: <a href={`mailto:${co.email}`} className="underline font-medium">{co.email}</a></p>}
@@ -243,9 +535,7 @@ function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, a
         </div>
       )}
 
-      {/* Actions row */}
       <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-50">
-        {/* View profile */}
         <button
           type="button"
           onClick={onViewProfile}
@@ -254,8 +544,6 @@ function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, a
           <Eye className="w-3.5 h-3.5" />
           View full profile
         </button>
-
-        {/* Approve / Reject */}
         {app.status === 'pending' && !shiftFilled && (
           <div className="flex gap-2">
             <Button size="sm" loading={approving} disabled={rejecting} onClick={onApprove}>
@@ -278,8 +566,8 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
   const isApproved = app.status === 'approved';
   const isPending  = app.status === 'pending';
 
-  const tierKey = profile?.subscription_tier || 'msingi';
-  const tier    = TIER[tierKey] ?? TIER.msingi;
+  const tierKey  = profile?.subscription_tier || 'msingi';
+  const tier     = TIER[tierKey] ?? TIER.msingi;
   const TierIcon = tier.icon;
 
   return (
@@ -288,8 +576,6 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto flex flex-col">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <h2 className="text-base font-bold text-gray-900">Applicant Profile</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Close">
@@ -298,8 +584,6 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
         </div>
 
         <div className="p-6 space-y-6">
-
-          {/* Identity block */}
           <div className="flex items-start gap-4">
             <Avatar src={co?.avatar_url} name={co?.display_name} size="xl" />
             <div className="flex-1 min-w-0">
@@ -307,15 +591,11 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
                 <h3 className="font-bold text-gray-900 text-lg leading-tight">{co?.display_name}</h3>
                 <Badge status={app.status} />
               </div>
-
               <p className="text-sm text-gray-500 mt-1">{profile?.specialization || 'General Practice'}</p>
-
               <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                 <Award className="w-3 h-3 shrink-0" />
                 Licence {profile?.license_number}
               </p>
-
-              {/* Badges row */}
               <div className="flex items-center gap-2 flex-wrap mt-2">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${tier.color}`}>
                   <TierIcon className="w-3 h-3" />
@@ -331,7 +611,6 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
             </div>
           </div>
 
-          {/* About */}
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">About</p>
             {co?.bio ? (
@@ -341,47 +620,33 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
             )}
           </div>
 
-          {/* Application date */}
           <div className="flex items-center gap-2 text-xs text-gray-400 pb-1 border-b border-gray-100">
             <Clock className="w-3.5 h-3.5 shrink-0" />
-            Applied {new Date(app.applied_at).toLocaleDateString('en-TZ', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-            })}
+            Applied {new Date(app.applied_at).toLocaleDateString('en-TZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
 
-          {/* Contact info — approved only */}
           {isApproved && (co?.email || co?.phone) && (
             <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-4 space-y-2">
               <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-1">Contact Information</p>
               {co.email && (
-                <a
-                  href={`mailto:${co.email}`}
-                  className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors"
-                >
-                  <Mail className="w-4 h-4 shrink-0" />
-                  {co.email}
+                <a href={`mailto:${co.email}`} className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors">
+                  <Mail className="w-4 h-4 shrink-0" />{co.email}
                 </a>
               )}
               {co.phone && (
-                <a
-                  href={`tel:${co.phone}`}
-                  className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors"
-                >
-                  <Phone className="w-4 h-4 shrink-0" />
-                  {co.phone}
+                <a href={`tel:${co.phone}`} className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors">
+                  <Phone className="w-4 h-4 shrink-0" />{co.phone}
                 </a>
               )}
             </div>
           )}
 
-          {/* Hint when pending */}
           {isPending && !isApproved && (
             <p className="text-xs text-gray-400 text-center">
               Contact details are shared after you approve the applicant.
             </p>
           )}
 
-          {/* Action buttons */}
           {isPending && !shiftFilled && (
             <div className="flex gap-3">
               <Button className="flex-1" loading={approving} disabled={rejecting} onClick={onApprove}>
@@ -418,7 +683,9 @@ function ShiftDetailSkeleton() {
     <div className="max-w-6xl mx-auto px-4 py-8 animate-pulse space-y-6">
       <div className="h-4 w-24 bg-gray-200 rounded-lg" />
       <div className="grid lg:grid-cols-3 gap-6">
-        <div className="bg-gray-100 rounded-2xl h-64" />
+        <div className="space-y-4">
+          <div className="bg-gray-100 rounded-2xl h-64" />
+        </div>
         <div className="lg:col-span-2 space-y-3">
           {[1,2,3].map(i => <div key={i} className="bg-gray-100 rounded-2xl h-24" />)}
         </div>

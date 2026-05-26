@@ -300,7 +300,7 @@ export default function InviteSetup() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          This link expires 7 days from when it was sent.
+          This link expires 72 hours from when it was sent.
         </p>
       </div>
     </div>

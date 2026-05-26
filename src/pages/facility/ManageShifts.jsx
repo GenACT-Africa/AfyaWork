@@ -9,7 +9,9 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { ShiftCardSkeleton } from '../../components/common/Skeleton';
 
-const FILTERS = ['all', 'open', 'filled', 'cancelled'];
+// Active = anything in the check-in/out lifecycle
+const ACTIVE_STATUSES = ['filled', 'confirmed', 'pending_checkin_approval', 'in_progress', 'pending_checkout_approval', 'disputed_checkin', 'disputed_checkout', 'no_show'];
+const FILTERS = ['all', 'open', 'active', 'completed', 'cancelled'];
 
 export default function ManageShifts() {
   const { user } = useAuth();
@@ -25,7 +27,11 @@ export default function ManageShifts() {
     }).finally(() => setLoading(false));
   }, [user?.id]);
 
-  const filtered = filter === 'all' ? shifts : shifts.filter((s) => s.status === filter);
+  const filtered = filter === 'all'
+    ? shifts
+    : filter === 'active'
+      ? shifts.filter((s) => ACTIVE_STATUSES.includes(s.status))
+      : shifts.filter((s) => s.status === filter);
 
   return (
     <PageWrapper
@@ -42,7 +48,7 @@ export default function ManageShifts() {
             className={`px-4 py-1.5 text-sm font-semibold rounded-lg capitalize transition-all
               ${filter === f ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {f === 'all' ? t('common.all') : t(`status.${f}`)}
+            {f === 'all' ? t('common.all') : f === 'active' ? 'Active' : t(`status.${f}`)}
           </button>
         ))}
       </div>

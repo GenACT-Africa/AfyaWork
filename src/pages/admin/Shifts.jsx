@@ -14,7 +14,13 @@ function formatPay(amount) {
   return `TZS ${Number(amount || 0).toLocaleString()}`;
 }
 
-const statusFilters = ['all', 'open', 'filled', 'cancelled'];
+const STATUS_LABELS = {
+  all: 'All', open: 'Open', filled: 'Offer Pending', confirmed: 'Confirmed',
+  in_progress: 'In Progress', completed: 'Completed',
+  disputed_checkin: 'Disputed (In)', disputed_checkout: 'Disputed (Out)',
+  no_show: 'No Show', cancelled: 'Cancelled',
+};
+const statusFilters = Object.keys(STATUS_LABELS);
 
 export default function AdminShifts() {
   const [shifts, setShifts] = useState([]);
@@ -56,13 +62,13 @@ export default function AdminShifts() {
             <button
               key={f}
               onClick={() => setStatusFilter(f)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold capitalize transition-colors ${
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                 statusFilter === f
                   ? 'bg-teal-600 text-white shadow-sm'
                   : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-800'
               }`}
             >
-              {f}
+              {STATUS_LABELS[f] ?? f}
             </button>
           ))}
         </div>

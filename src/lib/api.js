@@ -7,7 +7,7 @@ export function calculateFee(coPay) {
   return { co_pay: coPay, platform_fee: fee, total_facility_pays: coPay + fee };
 }
 
-// ── Shifts ──
+// ── Shifts ──────────────────────────────────────────────────────────
 
 // Shifts → facility_profiles goes through users (no direct FK), so we fetch separately
 async function attachFacilityProfiles(shifts) {
@@ -32,7 +32,6 @@ export async function getOpenShifts() {
 }
 
 export async function getFacilityShifts(facilityId) {
-  // Fetch shifts without the applications(count) join — count separately to avoid RLS edge cases
   const { data: shifts, error } = await supabase
     .from('shifts')
     .select('*')
@@ -41,7 +40,6 @@ export async function getFacilityShifts(facilityId) {
 
   if (error || !shifts || shifts.length === 0) return { data: shifts || [], error };
 
-  // Count pending applications per shift
   const shiftIds = shifts.map((s) => s.id);
   const { data: appCounts } = await supabase
     .from('applications')
@@ -68,7 +66,6 @@ export async function getShiftWithApplicants(shiftId) {
 
   if (shiftError) return { data: null, error: shiftError };
 
-  // Fetch applications with user info (direct FK: applications.co_id → users.id)
   const { data: applications, error: appError } = await supabase
     .from('applications')
     .select('*, users(display_name, phone, email, avatar_url, bio)')
@@ -77,7 +74,6 @@ export async function getShiftWithApplicants(shiftId) {
 
   if (appError) return { data: null, error: appError };
 
-  // Attach co_profiles separately (no direct FK from applications to co_profiles)
   const coIds = (applications || []).map((a) => a.co_id);
   const { data: coProfiles } = coIds.length
     ? await supabase
@@ -92,7 +88,13 @@ export async function getShiftWithApplicants(shiftId) {
     co_profiles: profileMap[a.co_id] || null,
   }));
 
-  return { data: { ...shift, applicants }, error: null };
+  // Fetch ratings for this shift (so facility can see if they've already rated)
+  const { data: ratings } = await supabase
+    .from('shift_ratings')
+    .select('*')
+    .eq('shift_id', shiftId);
+
+  return { data: { ...shift, applicants, ratings: ratings || [] }, error: null };
 }
 
 export async function createShift(shiftData) {
@@ -103,7 +105,7 @@ export async function cancelShift(shiftId) {
   return supabase.from('shifts').update({ status: 'cancelled' }).eq('id', shiftId);
 }
 
-// ── Applications ──
+// ── Applications ─────────────────────────────────────────────────
 
 export async function applyToShift(shiftId, coId) {
   return supabase
@@ -116,14 +118,20 @@ export async function applyToShift(shiftId, coId) {
 export async function getMyCOApplications(coId) {
   const { data: apps, error } = await supabase
     .from('applications')
-    .select('*, shifts(shift_id:id, shift_date, shift_type, pay_amount, status, facility_id)')
+    .select(`
+      *,
+      shifts(
+        id, shift_date, shift_type, pay_amount, status, facility_id, assigned_co_id,
+        checkin_at, checkout_at, checkin_approved_at, checkout_approved_at,
+        offer_expires_at, dispute_reason, dispute_raised_at, reliability_flag
+      )
+    `)
     .eq('co_id', coId)
     .order('applied_at', { ascending: false });
 
   if (error) return { data: null, error };
   if (!apps || apps.length === 0) return { data: [], error: null };
 
-  // Attach facility names separately (shifts → facility_profiles has no direct FK)
   const facilityIds = [...new Set(apps.map((a) => a.shifts?.facility_id).filter(Boolean))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
@@ -131,9 +139,23 @@ export async function getMyCOApplications(coId) {
     .in('user_id', facilityIds);
 
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+
+  // Fetch ratings by this CO so we know which shifts they've rated
+  const shiftIds = apps.map((a) => a.shifts?.id).filter(Boolean);
+  const { data: myRatings } = shiftIds.length
+    ? await supabase
+        .from('shift_ratings')
+        .select('shift_id, stars')
+        .eq('rater_id', coId)
+        .in('shift_id', shiftIds)
+    : { data: [] };
+
+  const ratingMap = Object.fromEntries((myRatings || []).map((r) => [r.shift_id, r]));
+
   return {
     data: apps.map((a) => ({
       ...a,
+      my_rating: ratingMap[a.shifts?.id] || null,
       shifts: a.shifts
         ? { ...a.shifts, facility_profiles: byId[a.shifts.facility_id] || null }
         : null,
@@ -153,7 +175,117 @@ export async function rejectApplication(applicationId) {
     .eq('id', applicationId);
 }
 
-// ── Profiles ──
+// ── Feature 2: Shift lifecycle ───────────────────────────────────
+
+/** CO accepts the shift offer */
+export async function acceptShiftOffer(shiftId) {
+  return supabase.rpc('accept_shift_offer', { p_shift_id: shiftId });
+}
+
+/** CO declines the shift offer (optionally with a reason) */
+export async function declineShiftOffer(shiftId, reason = null) {
+  return supabase.rpc('decline_shift_offer', { p_shift_id: shiftId, p_reason: reason });
+}
+
+/** CO checks in at the start of shift (optionally with GPS coords) */
+export async function coCheckin(shiftId, lat = null, lng = null) {
+  return supabase.rpc('co_checkin', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+}
+
+/** Facility confirms CO is on-site */
+export async function approveCheckin(shiftId) {
+  return supabase.rpc('approve_checkin', { p_shift_id: shiftId });
+}
+
+/** Facility disputes CO check-in claim */
+export async function disputeCheckin(shiftId, reason) {
+  return supabase.rpc('dispute_checkin', { p_shift_id: shiftId, p_reason: reason });
+}
+
+/** CO checks out at the end of shift (optionally with GPS coords) */
+export async function coCheckout(shiftId, lat = null, lng = null) {
+  return supabase.rpc('co_checkout', { p_shift_id: shiftId, p_lat: lat, p_lng: lng });
+}
+
+/** Facility confirms end of shift → status: completed */
+export async function approveCheckout(shiftId) {
+  return supabase.rpc('approve_checkout', { p_shift_id: shiftId });
+}
+
+/** Facility disputes CO checkout claim */
+export async function disputeCheckout(shiftId, reason) {
+  return supabase.rpc('dispute_checkout', { p_shift_id: shiftId, p_reason: reason });
+}
+
+/** Submit a star rating after shift completion */
+export async function submitRating(shiftId, rateeId, stars, comment = null) {
+  return supabase.rpc('submit_rating', {
+    p_shift_id:  shiftId,
+    p_ratee_id:  rateeId,
+    p_stars:     stars,
+    p_comment:   comment,
+  });
+}
+
+/** Admin resolves a disputed shift */
+export async function resolveDispute(shiftId, resolution, note = null) {
+  return supabase.rpc('resolve_dispute', {
+    p_shift_id:   shiftId,
+    p_resolution: resolution,
+    p_note:       note,
+  });
+}
+
+// ── Notifications ────────────────────────────────────────────────
+
+/** Fetch recent notifications for the current user */
+export async function getNotifications(limit = 20) {
+  return supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+}
+
+/** Count unread notifications for the current user */
+export async function getUnreadNotificationCount() {
+  const { count } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('read', false);
+  return count || 0;
+}
+
+/** Mark notifications as read */
+export async function markNotificationsRead(ids) {
+  if (!ids || ids.length === 0) return;
+  return supabase
+    .from('notifications')
+    .update({ read: true })
+    .in('id', ids);
+}
+
+/** Mark ALL unread notifications as read for current user */
+export async function markAllNotificationsRead() {
+  return supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('read', false);
+}
+
+// ── Ratings ──────────────────────────────────────────────────────
+
+/** Get all ratings received by a user (for profile display) */
+export async function getUserRatings(userId) {
+  return supabase
+    .from('shift_ratings')
+    .select('*, shifts(shift_date, shift_type), rater:rater_id(display_name, avatar_url, role)')
+    .eq('ratee_id', userId)
+    .eq('hidden_by_admin', false)
+    .order('published_at', { ascending: false });
+}
+
+// ── Profiles ─────────────────────────────────────────────────────
 
 export async function getCOProfile(userId) {
   return supabase
@@ -201,7 +333,6 @@ export async function uploadAvatar(userId, file) {
     .from('avatars')
     .getPublicUrl(path);
 
-  // Append cache-buster so browsers reload after re-upload
   const bust = `?t=${Date.now()}`;
   const url  = publicUrl + bust;
 
@@ -213,7 +344,7 @@ export async function uploadAvatar(userId, file) {
   return { url, error: updateError || null };
 }
 
-// ── Dashboard Stats ──
+// ── Dashboard Stats ──────────────────────────────────────────────
 
 export async function getCODashboardStats(coId) {
   const [openShifts, myApps] = await Promise.all([
@@ -223,14 +354,14 @@ export async function getCODashboardStats(coId) {
 
   const apps = myApps.data || [];
   return {
-    openShifts: openShifts.count || 0,
+    openShifts:     openShifts.count || 0,
     myApplications: apps.length,
-    confirmed: apps.filter((a) => a.status === 'approved').length,
-    pending: apps.filter((a) => a.status === 'pending').length,
+    confirmed:      apps.filter((a) => a.status === 'approved').length,
+    pending:        apps.filter((a) => a.status === 'pending').length,
   };
 }
 
-// ── Admin ──
+// ── Admin ────────────────────────────────────────────────────────
 
 export async function getAdminStats() {
   const [usersRes, shiftsRes, appsRes] = await Promise.all([
@@ -238,9 +369,9 @@ export async function getAdminStats() {
     supabase.from('shifts').select('status'),
     supabase.from('applications').select('status'),
   ]);
-  const users = usersRes.data || [];
+  const users  = usersRes.data  || [];
   const shifts = shiftsRes.data || [];
-  const apps = appsRes.data || [];
+  const apps   = appsRes.data   || [];
   return {
     totalFacilities:  users.filter((u) => u.role === 'facility').length,
     totalWorkers:     users.filter((u) => u.role === 'co').length,
@@ -248,6 +379,8 @@ export async function getAdminStats() {
     openShifts:       shifts.filter((s) => s.status === 'open').length,
     filledShifts:     shifts.filter((s) => s.status === 'filled').length,
     cancelledShifts:  shifts.filter((s) => s.status === 'cancelled').length,
+    completedShifts:  shifts.filter((s) => s.status === 'completed').length,
+    disputedShifts:   shifts.filter((s) => ['disputed_checkin','disputed_checkout'].includes(s.status)).length,
     totalApps:        apps.length,
     pendingApps:      apps.filter((a) => a.status === 'pending').length,
     approvedApps:     apps.filter((a) => a.status === 'approved').length,
@@ -296,30 +429,26 @@ export async function getAdminShifts() {
   if (error || !shifts) return { data: [], error };
 
   const facilityIds = [...new Set(shifts.map((s) => s.facility_id))];
-  const shiftIds = shifts.map((s) => s.id);
+  const shiftIds    = shifts.map((s) => s.id);
   const [{ data: profiles }, { data: apps }] = await Promise.all([
     supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
     supabase.from('applications').select('shift_id').in('shift_id', shiftIds),
   ]);
-  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const profileMap  = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
   const appCountMap = {};
   (apps || []).forEach((a) => { appCountMap[a.shift_id] = (appCountMap[a.shift_id] || 0) + 1; });
   return {
     data: shifts.map((s) => ({
       ...s,
       facility_profiles: profileMap[s.facility_id] || null,
-      applicant_count: appCountMap[s.id] || 0,
+      applicant_count:   appCountMap[s.id] || 0,
     })),
     error: null,
   };
 }
 
-// ── Admin CRUD ──
+// ── Admin CRUD ───────────────────────────────────────────────────
 
-/**
- * Create a facility via admin.
- * Uses the admin-create-user Edge Function (Supabase Admin API) for correct auth setup.
- */
 export async function adminCreateFacility({ email, facility_name, facility_type, address, phone }) {
   const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
     body: { email, role: 'facility', facility_name, facility_type, address, phone },
@@ -327,7 +456,6 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
   if (error) return { data: null, error };
   if (result?.error) return { data: null, error: { message: result.error } };
 
-  // Send invite email (best-effort)
   await supabase.functions.invoke('send-invite-email', {
     body: {
       email:         result.email,
@@ -341,10 +469,6 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
   return { data: result, error: null };
 }
 
-/**
- * Create a worker via admin.
- * Uses the admin-create-user Edge Function (Supabase Admin API) for correct auth setup.
- */
 export async function adminCreateWorker({ email, display_name, license_number, specialization, phone }) {
   const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
     body: { email, role: 'co', display_name, license_number, specialization, phone },
@@ -364,9 +488,6 @@ export async function adminCreateWorker({ email, display_name, license_number, s
   return { data: result, error: null };
 }
 
-/**
- * Resend invite to a pending/expired user. Generates a new token and sends the email.
- */
 export async function adminResendInvite(userId) {
   const { data: result, error } = await supabase.rpc('admin_resend_invite', {
     p_user_id: userId,
@@ -414,7 +535,7 @@ export async function getFacilityDashboardStats(facilityId) {
     .eq('facility_id', facilityId);
 
   const allShifts = shifts || [];
-  const openIds = allShifts.filter((s) => s.status === 'open').map((s) => s.id);
+  const openIds   = allShifts.filter((s) => s.status === 'open').map((s) => s.id);
 
   let pendingApplicants = 0;
   if (openIds.length > 0) {
@@ -427,9 +548,10 @@ export async function getFacilityDashboardStats(facilityId) {
   }
 
   return {
-    openShifts: allShifts.filter((s) => s.status === 'open').length,
-    filledShifts: allShifts.filter((s) => s.status === 'filled').length,
-    cancelledShifts: allShifts.filter((s) => s.status === 'cancelled').length,
+    openShifts:       allShifts.filter((s) => s.status === 'open').length,
+    filledShifts:     allShifts.filter((s) => s.status === 'filled').length,
+    cancelledShifts:  allShifts.filter((s) => s.status === 'cancelled').length,
+    completedShifts:  allShifts.filter((s) => s.status === 'completed').length,
     pendingApplicants,
   };
 }
