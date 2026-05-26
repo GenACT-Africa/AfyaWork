@@ -287,20 +287,17 @@ export async function getAdminShifts() {
 // ── Admin CRUD ──
 
 /**
- * Create a facility via admin. Returns { data: { user_id, invite_token, email, display_name, role }, error }
- * Automatically sends the invite email after creation.
+ * Create a facility via admin.
+ * Uses the admin-create-user Edge Function (Supabase Admin API) for correct auth setup.
  */
 export async function adminCreateFacility({ email, facility_name, facility_type, address, phone }) {
-  const { data: result, error } = await supabase.rpc('admin_create_facility', {
-    p_email:         email,
-    p_facility_name: facility_name,
-    p_facility_type: facility_type || null,
-    p_address:       address || null,
-    p_phone:         phone || null,
+  const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
+    body: { email, role: 'facility', facility_name, facility_type, address, phone },
   });
   if (error) return { data: null, error };
+  if (result?.error) return { data: null, error: { message: result.error } };
 
-  // Fire invite email (best-effort — don't block on failure)
+  // Send invite email (best-effort)
   await supabase.functions.invoke('send-invite-email', {
     body: {
       email:         result.email,
@@ -315,18 +312,15 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
 }
 
 /**
- * Create a worker via admin. Returns { data: { user_id, invite_token, email, display_name, role }, error }
- * Automatically sends the invite email after creation.
+ * Create a worker via admin.
+ * Uses the admin-create-user Edge Function (Supabase Admin API) for correct auth setup.
  */
 export async function adminCreateWorker({ email, display_name, license_number, specialization, phone }) {
-  const { data: result, error } = await supabase.rpc('admin_create_worker', {
-    p_email:          email,
-    p_display_name:   display_name,
-    p_license_number: license_number,
-    p_specialization: specialization || null,
-    p_phone:          phone || null,
+  const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
+    body: { email, role: 'co', display_name, license_number, specialization, phone },
   });
   if (error) return { data: null, error };
+  if (result?.error) return { data: null, error: { message: result.error } };
 
   await supabase.functions.invoke('send-invite-email', {
     body: {

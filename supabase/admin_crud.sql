@@ -82,9 +82,8 @@ BEGIN
     'authenticated', 'authenticated', now(), now(), '', '', false
   );
 
-  -- email column added for gotrue v2 identity lookup (sign-in requires it)
   INSERT INTO auth.identities (
-    id, user_id, identity_data, provider, provider_id, email,
+    id, user_id, identity_data, provider, provider_id,
     created_at, updated_at, last_sign_in_at
   ) VALUES (
     identity_id, new_id,
@@ -92,7 +91,7 @@ BEGIN
       'sub', new_id::text, 'email', p_email,
       'email_verified', true, 'phone_verified', false
     ),
-    'email', p_email, p_email, now(), now(), now()
+    'email', p_email, now(), now(), now()
   );
 
   -- Trigger already created public.users and facility_profiles; set invite fields + phone
@@ -161,9 +160,8 @@ BEGIN
     'authenticated', 'authenticated', now(), now(), '', '', false
   );
 
-  -- email column added for gotrue v2 identity lookup (sign-in requires it)
   INSERT INTO auth.identities (
-    id, user_id, identity_data, provider, provider_id, email,
+    id, user_id, identity_data, provider, provider_id,
     created_at, updated_at, last_sign_in_at
   ) VALUES (
     identity_id, new_id,
@@ -171,7 +169,7 @@ BEGIN
       'sub', new_id::text, 'email', p_email,
       'email_verified', true, 'phone_verified', false
     ),
-    'email', p_email, p_email, now(), now(), now()
+    'email', p_email, now(), now(), now()
   );
 
   UPDATE public.users

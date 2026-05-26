@@ -103,26 +103,24 @@ export default function InviteSetup() {
 
     setStatus('activating');
 
-    // 1 — Activate account (sets real password in auth.users)
-    const { data: result, error: rpcError } = await supabase.rpc('activate_account', {
-      p_token: token,
-      p_new_password: password,
+    // 1 — Activate account via Edge Function (uses Supabase Admin API for correct bcrypt)
+    const { data: result, error: fnError } = await supabase.functions.invoke('activate-account', {
+      body: { token, password },
     });
 
-    if (rpcError || !result?.success) {
-      setFormError(result?.reason || rpcError?.message || 'Activation failed. Please try again.');
+    if (fnError || !result?.success) {
+      setFormError(result?.reason || fnError?.message || 'Activation failed. Please try again.');
       setStatus('ready');
       return;
     }
 
     // 2 — Auto sign-in with the new password
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: userInfo.email,
+      email: result.email || userInfo.email,
       password,
     });
 
     if (signInError) {
-      // Show the exact error so the admin can diagnose it
       setFormError(`Account activated but sign-in failed: ${signInError.message}. Please try signing in manually.`);
       setStatus('ready');
       return;
