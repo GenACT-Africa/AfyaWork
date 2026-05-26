@@ -7,6 +7,7 @@ import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { ShiftCardSkeleton } from '../../components/common/Skeleton';
+import { Avatar } from '../../components/common/Avatar';
 
 const TABS = ['all', 'pending', 'approved', 'rejected'];
 
@@ -69,20 +70,30 @@ export default function MyApplications() {
 
 function ApplicationCard({ app, t }) {
   const shift = app.shifts;
+  const facility = shift?.facility_profiles;
   const isApproved = app.status === 'approved';
 
   return (
     <div className={`bg-white rounded-2xl border px-5 py-5 shadow-sm transition-all
       ${isApproved ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-100 hover:shadow-md'}`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-bold text-gray-900 text-base">{shift?.shift_type}</p>
-          <p className="text-sm text-gray-500 mt-0.5 font-medium">{shift?.facility_profiles?.facility_name}</p>
-          <p className="text-sm text-gray-400 mt-1">
-            {new Date(shift?.shift_date + 'T00:00:00').toLocaleDateString('en-TZ', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-            })}
-          </p>
+        <div className="flex items-start gap-3">
+          <Avatar
+            src={facility?.users?.avatar_url}
+            name={facility?.facility_name}
+            size="md"
+            shape="rounded"
+            className="mt-0.5"
+          />
+          <div>
+            <p className="font-bold text-gray-900 text-base">{shift?.shift_type}</p>
+            <p className="text-sm text-gray-500 mt-0.5 font-medium">{facility?.facility_name}</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {new Date(shift?.shift_date + 'T00:00:00').toLocaleDateString('en-TZ', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+              })}
+            </p>
+          </div>
         </div>
         <div className="flex flex-col items-end gap-2">
           <Badge status={app.status} />

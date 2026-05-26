@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Stethoscope, Star, Zap } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Camera, Stethoscope, Star, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getCOProfile, updateCOProfile, updateUserProfile } from '../../lib/api';
+import { getCOProfile, updateCOProfile, updateUserProfile, uploadAvatar } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
+import { Avatar } from '../../components/common/Avatar';
 
 const TIERS = [
   { key: 'msingi', label: 'Msingi (Free)', price: 'TZS 0/mo', desc: 'Standard matching — shifts visible 30 min after paid tiers', icon: Stethoscope },
@@ -16,17 +17,21 @@ const TIERS = [
 ];
 
 export default function COProfile() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { show, ToastComponent } = useToast();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
   const [form, setForm] = useState({ display_name: '', phone: '', specialization: '' });
+  const fileRef = useRef(null);
 
   useEffect(() => {
     if (!user?.id) return;
     getCOProfile(user.id).then(({ data }) => {
       setProfile(data);
+      setAvatarUrl(data?.users?.avatar_url || null);
       setForm({
         display_name: data?.users?.display_name || '',
         phone: data?.users?.phone || '',
@@ -34,6 +39,19 @@ export default function COProfile() {
       });
     }).finally(() => setLoading(false));
   }, [user?.id]);
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { show('Image must be under 5 MB.', 'error'); return; }
+    setUploading(true);
+    const { url, error } = await uploadAvatar(user.id, file);
+    setUploading(false);
+    if (error) { show('Upload failed: ' + error.message, 'error'); return; }
+    setAvatarUrl(url);
+    await refreshUser();
+    show('Profile picture updated!');
+  }
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -61,6 +79,42 @@ export default function COProfile() {
         <div className="lg:col-span-2">
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-5">Personal Information</h2>
+
+            {/* Avatar upload */}
+            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
+              <div className="relative group shrink-0">
+                <Avatar src={avatarUrl} name={form.display_name || user?.email} size="xl" />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-wait"
+                  aria-label="Change photo"
+                >
+                  <Camera className="w-5 h-5 text-white" />
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={handleAvatarChange}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{form.display_name || 'Your name'}</p>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="text-sm text-teal-600 hover:text-teal-700 font-medium disabled:opacity-60"
+                >
+                  {uploading ? 'Uploading…' : 'Change photo'}
+                </button>
+                <p className="text-xs text-gray-400 mt-0.5">JPG, PNG or WebP · max 5 MB</p>
+              </div>
+            </div>
+
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Full Name" value={form.display_name} onChange={set('display_name')} required />
               <Input label="Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />

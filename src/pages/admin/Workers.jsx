@@ -4,6 +4,7 @@ import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
+import { Avatar } from '../../components/common/Avatar';
 import {
   getAdminWorkers,
   adminCreateWorker,
@@ -232,9 +233,7 @@ export default function AdminWorkers() {
                   <tr key={w.user_id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shrink-0 shadow-sm text-white text-xs font-bold">
-                          {(w.users?.display_name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
-                        </div>
+                        <Avatar src={w.users?.avatar_url} name={w.users?.display_name} size="sm" />
                         <div>
                           <p className="font-semibold text-gray-900">{w.users?.display_name || '—'}</p>
                           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">

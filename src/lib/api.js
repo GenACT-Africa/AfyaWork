@@ -15,7 +15,7 @@ async function attachFacilityProfiles(shifts) {
   const ids = [...new Set(shifts.map((s) => s.facility_id))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name, facility_type, address')
+    .select('user_id, facility_name, facility_type, address, users(avatar_url)')
     .in('user_id', ids);
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
   return shifts.map((s) => ({ ...s, facility_profiles: byId[s.facility_id] || null }));
@@ -71,7 +71,7 @@ export async function getShiftWithApplicants(shiftId) {
   // Fetch applications with user info (direct FK: applications.co_id → users.id)
   const { data: applications, error: appError } = await supabase
     .from('applications')
-    .select('*, users(display_name, phone, email)')
+    .select('*, users(display_name, phone, email, avatar_url)')
     .eq('shift_id', shiftId)
     .order('applied_at', { ascending: true });
 
@@ -158,7 +158,7 @@ export async function rejectApplication(applicationId) {
 export async function getCOProfile(userId) {
   return supabase
     .from('co_profiles')
-    .select('*, users(display_name, email, phone)')
+    .select('*, users(display_name, email, phone, avatar_url)')
     .eq('user_id', userId)
     .single();
 }
@@ -166,7 +166,7 @@ export async function getCOProfile(userId) {
 export async function getFacilityProfile(userId) {
   return supabase
     .from('facility_profiles')
-    .select('*, users(display_name, email, phone)')
+    .select('*, users(display_name, email, phone, avatar_url)')
     .eq('user_id', userId)
     .single();
 }
@@ -181,6 +181,36 @@ export async function updateFacilityProfile(userId, updates) {
 
 export async function updateUserProfile(userId, updates) {
   return supabase.from('users').update(updates).eq('id', userId);
+}
+
+/**
+ * Upload a profile picture to Supabase Storage and update avatar_url in public.users.
+ * Returns { url, error }.
+ */
+export async function uploadAvatar(userId, file) {
+  const ext  = file.name.split('.').pop().toLowerCase();
+  const path = `${userId}/avatar.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (uploadError) return { url: null, error: uploadError };
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('avatars')
+    .getPublicUrl(path);
+
+  // Append cache-buster so browsers reload after re-upload
+  const bust = `?t=${Date.now()}`;
+  const url  = publicUrl + bust;
+
+  const { error: updateError } = await supabase
+    .from('users')
+    .update({ avatar_url: url })
+    .eq('id', userId);
+
+  return { url, error: updateError || null };
 }
 
 // ── Dashboard Stats ──
@@ -227,7 +257,7 @@ export async function getAdminStats() {
 export async function getAdminFacilities() {
   const { data, error } = await supabase
     .from('facility_profiles')
-    .select('*, users(email, phone, created_at, account_status, invited_at)')
+    .select('*, users(email, phone, created_at, account_status, invited_at, avatar_url)')
     .order('facility_name', { ascending: true });
   if (error || !data) return { data: [], error };
 
@@ -245,7 +275,7 @@ export async function getAdminFacilities() {
 export async function getAdminWorkers() {
   const { data, error } = await supabase
     .from('co_profiles')
-    .select('*, users(email, phone, display_name, created_at, account_status, invited_at)')
+    .select('*, users(email, phone, display_name, created_at, account_status, invited_at, avatar_url)')
     .order('user_id', { ascending: true });
   if (error || !data) return { data: [], error };
 

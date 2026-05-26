@@ -4,6 +4,7 @@ import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
+import { Avatar } from '../../components/common/Avatar';
 import {
   getAdminFacilities,
   adminCreateFacility,
@@ -224,9 +225,7 @@ export default function AdminFacilities() {
                   <tr key={f.user_id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
-                          <Building2 className="w-4 h-4 text-white" />
-                        </div>
+                        <Avatar src={f.users?.avatar_url} name={f.facility_name} size="sm" shape="rounded" />
                         <div>
                           <p className="font-semibold text-gray-900">{f.facility_name}</p>
                           <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>

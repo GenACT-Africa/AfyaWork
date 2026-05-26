@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getFacilityProfile, updateFacilityProfile, updateUserProfile } from '../../lib/api';
+import { getFacilityProfile, updateFacilityProfile, updateUserProfile, uploadAvatar } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
+import { Avatar } from '../../components/common/Avatar';
 
 const PLANS = [
   { key: 'payg', label: 'Pay-as-you-go', price: 'TZS 0/mo', fee: '18.6% of CO pay' },
@@ -15,17 +17,21 @@ const PLANS = [
 ];
 
 export default function FacilityProfile() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { show, ToastComponent } = useToast();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
   const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '' });
+  const fileRef = useRef(null);
 
   useEffect(() => {
     if (!user?.id) return;
     getFacilityProfile(user.id).then(({ data }) => {
       setProfile(data);
+      setAvatarUrl(data?.users?.avatar_url || null);
       setForm({
         phone: data?.users?.phone || '',
         facility_name: data?.facility_name || '',
@@ -34,6 +40,19 @@ export default function FacilityProfile() {
       });
     }).finally(() => setLoading(false));
   }, [user?.id]);
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { show('Image must be under 5 MB.', 'error'); return; }
+    setUploading(true);
+    const { url, error } = await uploadAvatar(user.id, file);
+    setUploading(false);
+    if (error) { show('Upload failed: ' + error.message, 'error'); return; }
+    setAvatarUrl(url);
+    await refreshUser();
+    show('Profile picture updated!');
+  }
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -66,6 +85,42 @@ export default function FacilityProfile() {
         <div className="lg:col-span-2">
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-5">Facility Information</h2>
+
+            {/* Avatar upload */}
+            <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
+              <div className="relative group shrink-0">
+                <Avatar src={avatarUrl} name={form.facility_name || user?.email} size="xl" shape="rounded" />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-wait"
+                  aria-label="Change photo"
+                >
+                  <Camera className="w-5 h-5 text-white" />
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={handleAvatarChange}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{form.facility_name || 'Your facility'}</p>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="text-sm text-teal-600 hover:text-teal-700 font-medium disabled:opacity-60"
+                >
+                  {uploading ? 'Uploading…' : 'Change photo'}
+                </button>
+                <p className="text-xs text-gray-400 mt-0.5">JPG, PNG or WebP · max 5 MB</p>
+              </div>
+            </div>
+
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Facility Name" value={form.facility_name} onChange={set('facility_name')} required />
               <Input label="Contact Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />

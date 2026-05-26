@@ -10,6 +10,7 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { useToast } from '../../components/common/Toast';
 import { supabase } from '../../lib/supabase';
+import { Avatar } from '../../components/common/Avatar';
 
 export default function ShiftDetail() {
   const { id } = useParams();
@@ -186,9 +187,7 @@ function ApplicantCard({ app, shiftFilled, onApprove, onReject, approving, rejec
     <Card className={`p-5 transition-all ${isApproved ? 'border-emerald-200 bg-emerald-50/20' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
-            {co?.display_name?.[0]?.toUpperCase() || '?'}
-          </div>
+          <Avatar src={co?.avatar_url} name={co?.display_name} size="lg" />
           <div>
             <p className="font-bold text-gray-900">{co?.display_name}</p>
             <p className="text-sm text-gray-500">{profile?.specialization || 'General Practice'} · {t('common.license')} {profile?.license_number}</p>

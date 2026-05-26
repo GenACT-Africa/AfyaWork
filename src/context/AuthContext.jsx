@@ -19,12 +19,18 @@ export function AuthProvider({ children }) {
     }
     const { data } = await supabase
       .from('users')
-      .select('role, display_name, phone, account_status')
+      .select('role, display_name, phone, account_status, avatar_url')
       .eq('id', authUser.id)
       .single();
     setUser({ ...authUser, ...data });
     setRole(data?.role || null);
     setAccountStatus(data?.account_status || 'active');
+  }
+
+  /** Re-fetches the current user's public profile (e.g. after uploading a new avatar). */
+  async function refreshUser() {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) await fetchUserRole(authUser);
   }
 
   useEffect(() => {
@@ -66,7 +72,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, role, accountStatus, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, accountStatus, loading, signUp, signIn, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

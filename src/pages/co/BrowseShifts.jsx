@@ -7,6 +7,7 @@ import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Button } from '../../components/common/Button';
 import { ShiftCardSkeleton } from '../../components/common/Skeleton';
 import { useToast } from '../../components/common/Toast';
+import { Avatar } from '../../components/common/Avatar';
 
 const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-6AM)', '24-Hour', 'Weekend'];
 
@@ -93,7 +94,7 @@ function ShiftCard({ shift, applied, applying, onApply, t }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <div>
-        <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-start justify-between gap-2 mb-3">
           <span className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 text-xs font-semibold rounded-lg">
             {shift.shift_type}
           </span>
@@ -101,12 +102,22 @@ function ShiftCard({ shift, applied, applying, onApply, t }) {
             TZS {shift.pay_amount.toLocaleString()}
           </span>
         </div>
-        <p className="font-semibold text-gray-800">{facility?.facility_name}</p>
-        {facility?.facility_type && (
-          <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
-            <Building2 className="w-3 h-3" />{facility.facility_type}
+        <div className="flex items-center gap-2.5">
+          <Avatar
+            src={facility?.users?.avatar_url}
+            name={facility?.facility_name}
+            size="sm"
+            shape="rounded"
+          />
+          <div>
+            <p className="font-semibold text-gray-800 leading-tight">{facility?.facility_name}</p>
+            {facility?.facility_type && (
+              <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                <Building2 className="w-3 h-3" />{facility.facility_type}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5 text-xs text-gray-500">

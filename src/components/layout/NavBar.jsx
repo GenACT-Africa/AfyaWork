@@ -4,6 +4,7 @@ import { Menu, X, Stethoscope, LogOut } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
+import { Avatar } from '../common/Avatar';
 
 export function NavBar() {
   const { user, role, signOut } = useAuth();
@@ -34,8 +35,6 @@ export function NavBar() {
   ];
 
   const links = role === 'admin' ? adminLinks : role === 'co' ? coLinks : facilityLinks;
-  const initials = (user?.display_name || user?.email || '?')
-    .split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
   async function handleSignOut() {
     await signOut();
@@ -83,9 +82,7 @@ export function NavBar() {
             <LanguageToggle />
             <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shadow-sm shrink-0">
-                {initials}
-              </div>
+              <Avatar src={user.avatar_url} name={user.display_name || user.email} size="sm" />
               <span className="text-sm text-gray-600 max-w-[130px] truncate font-medium">
                 {user.display_name || user.email}
               </span>
@@ -102,9 +99,7 @@ export function NavBar() {
           {/* Mobile: avatar + hamburger */}
           <div className="md:hidden flex items-center gap-2">
             <LanguageToggle />
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-xs font-bold flex items-center justify-center">
-              {initials}
-            </div>
+            <Avatar src={user.avatar_url} name={user.display_name || user.email} size="sm" />
             <button
               className="p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors"
               onClick={() => setOpen(!open)}
@@ -121,9 +116,7 @@ export function NavBar() {
         <div className="md:hidden border-t border-gray-100 bg-white shadow-lg">
           <div className="px-4 py-3">
             <div className="flex items-center gap-3 px-3 py-3 mb-3 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-xl border border-teal-100">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white text-sm font-bold flex items-center justify-center shrink-0 shadow-sm">
-                {initials}
-              </div>
+              <Avatar src={user.avatar_url} name={user.display_name || user.email} size="md" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{user.display_name || 'User'}</p>
                 <p className="text-xs text-gray-400 truncate">{user.email}</p>
