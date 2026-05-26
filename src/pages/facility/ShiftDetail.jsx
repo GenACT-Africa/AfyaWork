@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Clock, Banknote, Users, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import {
+  ArrowLeft, CalendarDays, Clock, Banknote, Users, CheckCircle, XCircle,
+  AlertTriangle, Eye, X, Mail, Phone, Award, Star, Zap, Stethoscope,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getShiftWithApplicants, approveApplication, rejectApplication, cancelShift } from '../../lib/api';
@@ -12,6 +15,14 @@ import { useToast } from '../../components/common/Toast';
 import { supabase } from '../../lib/supabase';
 import { Avatar } from '../../components/common/Avatar';
 
+// ── Tier display config ───────────────────────────────────────────
+const TIER = {
+  msingi:  { label: 'Msingi',  desc: 'Standard matching',   color: 'bg-gray-100 text-gray-700',   icon: Stethoscope },
+  daktari: { label: 'Daktari', desc: 'Priority access',     color: 'bg-blue-50 text-blue-700',    icon: Star },
+  bingwa:  { label: 'Bingwa',  desc: 'First access',        color: 'bg-amber-50 text-amber-700',  icon: Zap },
+};
+
+// ── Main page ─────────────────────────────────────────────────────
 export default function ShiftDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -22,6 +33,7 @@ export default function ShiftDetail() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [cancelModal, setCancelModal] = useState(false);
+  const [modalApp, setModalApp] = useState(null);
 
   const loadShift = useCallback(async () => {
     const { data, error } = await getShiftWithApplicants(id);
@@ -72,9 +84,9 @@ export default function ShiftDetail() {
   if (loading) return <ShiftDetailSkeleton />;
 
   const applicants = shift.applicants || [];
-  const isFilled = shift.status === 'filled';
+  const isFilled    = shift.status === 'filled';
   const isCancelled = shift.status === 'cancelled';
-  const isOpen = shift.status === 'open';
+  const isOpen      = shift.status === 'open';
 
   return (
     <PageWrapper>
@@ -140,6 +152,7 @@ export default function ShiftDetail() {
                   key={app.id}
                   app={app}
                   shiftFilled={isFilled || isCancelled}
+                  onViewProfile={() => setModalApp(app)}
                   onApprove={() => handleApprove(app.id)}
                   onReject={() => handleReject(app.id)}
                   approving={actionLoading === app.id}
@@ -152,7 +165,21 @@ export default function ShiftDetail() {
         </div>
       </div>
 
-      {/* Cancel modal */}
+      {/* Applicant profile modal */}
+      {modalApp && (
+        <ApplicantModal
+          app={modalApp}
+          shiftFilled={isFilled || isCancelled}
+          onClose={() => setModalApp(null)}
+          onApprove={() => { setModalApp(null); handleApprove(modalApp.id); }}
+          onReject={() => { setModalApp(null); handleReject(modalApp.id); }}
+          approving={actionLoading === modalApp.id}
+          rejecting={actionLoading === `reject-${modalApp.id}`}
+          t={t}
+        />
+      )}
+
+      {/* Cancel shift modal */}
       {cancelModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -178,30 +205,37 @@ export default function ShiftDetail() {
   );
 }
 
-function ApplicantCard({ app, shiftFilled, onApprove, onReject, approving, rejecting, t }) {
-  const co = app.users;
+// ── Applicant summary card (list view) ────────────────────────────
+function ApplicantCard({ app, shiftFilled, onViewProfile, onApprove, onReject, approving, rejecting, t }) {
+  const co      = app.users;
   const profile = app.co_profiles;
   const isApproved = app.status === 'approved';
 
   return (
-    <Card className={`p-5 transition-all ${isApproved ? 'border-emerald-200 bg-emerald-50/20' : ''}`}>
+    <Card className={`p-5 transition-all ${isApproved ? 'border-emerald-200 bg-emerald-50/20' : 'hover:shadow-md'}`}>
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
+        {/* Left: avatar + key info */}
+        <div className="flex items-start gap-3 min-w-0">
           <Avatar src={co?.avatar_url} name={co?.display_name} size="lg" />
-          <div>
-            <p className="font-bold text-gray-900">{co?.display_name}</p>
-            <p className="text-sm text-gray-500">{profile?.specialization || 'General Practice'} · {t('common.license')} {profile?.license_number}</p>
+          <div className="min-w-0">
+            <p className="font-bold text-gray-900 truncate">{co?.display_name}</p>
+            <p className="text-sm text-gray-500">
+              {profile?.specialization || 'General Practice'} · {t('common.license')} {profile?.license_number}
+            </p>
             {co?.bio && (
               <p className="text-xs text-gray-500 italic mt-1 line-clamp-2 leading-relaxed">"{co.bio}"</p>
             )}
             <p className="text-xs text-gray-400 mt-1">
-              {t('co.applied')} {new Date(app.applied_at).toLocaleDateString('en-TZ', { day: 'numeric', month: 'short' })}
+              {t('co.applied')} {new Date(app.applied_at).toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
         </div>
+
+        {/* Right: badge */}
         <Badge status={app.status} />
       </div>
 
+      {/* Contact strip (approved) */}
       {isApproved && (co?.email || co?.phone) && (
         <div className="mt-4 pt-4 border-t border-emerald-100 bg-emerald-50 rounded-xl px-4 py-3 text-sm text-emerald-800 space-y-1">
           {co.email && <p>Email: <a href={`mailto:${co.email}`} className="underline font-medium">{co.email}</a></p>}
@@ -209,20 +243,160 @@ function ApplicantCard({ app, shiftFilled, onApprove, onReject, approving, rejec
         </div>
       )}
 
-      {app.status === 'pending' && !shiftFilled && (
-        <div className="flex gap-2 mt-4">
-          <Button size="sm" className="flex-1" loading={approving} disabled={rejecting} onClick={onApprove}>
-            <CheckCircle className="w-4 h-4" /> {t('facility.approve')}
-          </Button>
-          <Button variant="secondary" size="sm" className="flex-1" loading={rejecting} disabled={approving} onClick={onReject}>
-            <XCircle className="w-4 h-4" /> {t('facility.reject')}
-          </Button>
-        </div>
-      )}
+      {/* Actions row */}
+      <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-50">
+        {/* View profile */}
+        <button
+          type="button"
+          onClick={onViewProfile}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+        >
+          <Eye className="w-3.5 h-3.5" />
+          View full profile
+        </button>
+
+        {/* Approve / Reject */}
+        {app.status === 'pending' && !shiftFilled && (
+          <div className="flex gap-2">
+            <Button size="sm" loading={approving} disabled={rejecting} onClick={onApprove}>
+              <CheckCircle className="w-4 h-4" /> {t('facility.approve')}
+            </Button>
+            <Button variant="secondary" size="sm" loading={rejecting} disabled={approving} onClick={onReject}>
+              <XCircle className="w-4 h-4" /> {t('facility.reject')}
+            </Button>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
 
+// ── Applicant profile modal ───────────────────────────────────────
+function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approving, rejecting, t }) {
+  const co      = app.users;
+  const profile = app.co_profiles;
+  const isApproved = app.status === 'approved';
+  const isPending  = app.status === 'pending';
+
+  const tierKey = profile?.subscription_tier || 'msingi';
+  const tier    = TIER[tierKey] ?? TIER.msingi;
+  const TierIcon = tier.icon;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+          <h2 className="text-base font-bold text-gray-900">Applicant Profile</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Close">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+
+          {/* Identity block */}
+          <div className="flex items-start gap-4">
+            <Avatar src={co?.avatar_url} name={co?.display_name} size="xl" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-bold text-gray-900 text-lg leading-tight">{co?.display_name}</h3>
+                <Badge status={app.status} />
+              </div>
+
+              <p className="text-sm text-gray-500 mt-1">{profile?.specialization || 'General Practice'}</p>
+
+              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                <Award className="w-3 h-3 shrink-0" />
+                Licence {profile?.license_number}
+              </p>
+
+              {/* Badges row */}
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${tier.color}`}>
+                  <TierIcon className="w-3 h-3" />
+                  {tier.label}
+                </span>
+                {profile?.verified && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+                    <CheckCircle className="w-3 h-3" />
+                    Verified CO
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* About */}
+          {co?.bio && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">About</p>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{co.bio}</p>
+            </div>
+          )}
+
+          {/* Application date */}
+          <div className="flex items-center gap-2 text-xs text-gray-400 pb-1 border-b border-gray-100">
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            Applied {new Date(app.applied_at).toLocaleDateString('en-TZ', {
+              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            })}
+          </div>
+
+          {/* Contact info — approved only */}
+          {isApproved && (co?.email || co?.phone) && (
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-4 space-y-2">
+              <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-1">Contact Information</p>
+              {co.email && (
+                <a
+                  href={`mailto:${co.email}`}
+                  className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors"
+                >
+                  <Mail className="w-4 h-4 shrink-0" />
+                  {co.email}
+                </a>
+              )}
+              {co.phone && (
+                <a
+                  href={`tel:${co.phone}`}
+                  className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 transition-colors"
+                >
+                  <Phone className="w-4 h-4 shrink-0" />
+                  {co.phone}
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Hint when pending */}
+          {isPending && !isApproved && (
+            <p className="text-xs text-gray-400 text-center">
+              Contact details are shared after you approve the applicant.
+            </p>
+          )}
+
+          {/* Action buttons */}
+          {isPending && !shiftFilled && (
+            <div className="flex gap-3">
+              <Button className="flex-1" loading={approving} disabled={rejecting} onClick={onApprove}>
+                <CheckCircle className="w-4 h-4" /> {t('facility.approve')}
+              </Button>
+              <Button variant="secondary" className="flex-1" loading={rejecting} disabled={approving} onClick={onReject}>
+                <XCircle className="w-4 h-4" /> {t('facility.reject')}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared helpers ────────────────────────────────────────────────
 function InfoRow({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3 text-sm">
