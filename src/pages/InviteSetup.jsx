@@ -122,8 +122,9 @@ export default function InviteSetup() {
     });
 
     if (signInError) {
-      // Account activated but sign-in failed — rare; send them to login
-      navigate('/auth/login', { replace: true });
+      // Show the exact error so the admin can diagnose it
+      setFormError(`Account activated but sign-in failed: ${signInError.message}. Please try signing in manually.`);
+      setStatus('ready');
       return;
     }
 
