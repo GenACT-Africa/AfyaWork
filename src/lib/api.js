@@ -285,7 +285,10 @@ export async function approveCheckin(shiftId) {
 /** Facility disputes CO check-in claim */
 export async function disputeCheckin(shiftId, reason) {
   const result = await supabase.rpc('dispute_checkin', { p_shift_id: shiftId, p_reason: reason });
-  if (!result.error) wa('checkin_disputed', shiftId);
+  if (!result.error) {
+    wa('checkin_disputed', shiftId);
+    holdPayment(shiftId, 'checkin_disputed');
+  }
   return result;
 }
 
@@ -299,14 +302,23 @@ export async function coCheckout(shiftId, lat = null, lng = null) {
 /** Facility confirms end of shift → status: completed */
 export async function approveCheckout(shiftId) {
   const result = await supabase.rpc('approve_checkout', { p_shift_id: shiftId });
-  if (!result.error) wa('checkout_approved', shiftId);
+  if (!result.error) {
+    wa('checkout_approved', shiftId);
+    // Fire-and-forget: calculate CO pay and create payment record
+    supabase.functions
+      .invoke('calculate-shift-payment', { body: { shift_id: shiftId } })
+      .catch((e) => console.warn('Payment calculation skipped:', e?.message));
+  }
   return result;
 }
 
 /** Facility disputes CO checkout claim */
 export async function disputeCheckout(shiftId, reason) {
   const result = await supabase.rpc('dispute_checkout', { p_shift_id: shiftId, p_reason: reason });
-  if (!result.error) wa('checkout_disputed', shiftId);
+  if (!result.error) {
+    wa('checkout_disputed', shiftId);
+    holdPayment(shiftId, 'checkout_disputed');
+  }
   return result;
 }
 
@@ -729,6 +741,295 @@ export async function adminUpdateWorker(userId, { display_name, license_number, 
 export async function adminDeleteUser(userId) {
   return supabase.rpc('admin_delete_user', { p_user_id: userId });
 }
+
+// ── Payments ─────────────────────────────────────────────────────
+
+// ── CO: Mobile Money Profile ──────────────────────────────────────
+
+export async function getCOMobileMoneyProfile(coId) {
+  return supabase
+    .from('co_mobile_money')
+    .select('*')
+    .eq('co_id', coId)
+    .maybeSingle();
+}
+
+export async function upsertCOMobileMoneyProfile(coId, data) {
+  return supabase
+    .from('co_mobile_money')
+    .upsert({ co_id: coId, ...data }, { onConflict: 'co_id' })
+    .select()
+    .single();
+}
+
+// ── CO: Payment History ───────────────────────────────────────────
+
+export async function getCOPayments(coId) {
+  const { data, error } = await supabase
+    .from('shift_payments')
+    .select(`
+      id, shift_id, facility_id, co_total_pay, adjusted_pay_amount,
+      payment_status, mobile_money_provider, mobile_money_number,
+      disbursed_at, scheduled_at, created_at, overtime_pay, platform_fee,
+      flat_shift_rate, hold_reason, failure_reason, selcom_transaction_ref
+    `)
+    .eq('co_id', coId)
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return { data: [], error };
+
+  const facilityIds = [...new Set(data.map((p) => p.facility_id))];
+  const shiftIds    = data.map((p) => p.shift_id);
+
+  const [{ data: profiles }, { data: shifts }] = await Promise.all([
+    supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
+    supabase.from('shifts').select('id, shift_date, shift_type').in('id', shiftIds),
+  ]);
+
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const shiftMap   = Object.fromEntries((shifts   || []).map((s) => [s.id, s]));
+
+  return {
+    data: data.map((p) => ({
+      ...p,
+      facility: profileMap[p.facility_id] || null,
+      shift:    shiftMap[p.shift_id]      || null,
+    })),
+    error: null,
+  };
+}
+
+export async function getCOPaymentStats(coId) {
+  const { data } = await supabase
+    .from('shift_payments')
+    .select('co_total_pay, adjusted_pay_amount, payment_status, disbursed_at')
+    .eq('co_id', coId);
+
+  const payments = data || [];
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const totalEarned = payments
+    .filter((p) => p.payment_status === 'disbursed')
+    .reduce((s, p) => s + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0);
+
+  const earnedThisMonth = payments
+    .filter((p) => p.payment_status === 'disbursed' && new Date(p.disbursed_at) >= monthStart)
+    .reduce((s, p) => s + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0);
+
+  const upcoming = payments
+    .filter((p) => ['scheduled', 'processing'].includes(p.payment_status))
+    .reduce((s, p) => s + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0);
+
+  return { totalEarned, earnedThisMonth, upcoming };
+}
+
+// ── Admin: Payment Overview ───────────────────────────────────────
+
+export async function getAdminPaymentOverview() {
+  const [{ data: stats }, { data: batches }] = await Promise.all([
+    supabase.from('admin_payment_stats').select('*').maybeSingle(),
+    supabase.from('disbursement_batches')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ]);
+  return { stats: stats || {}, recentBatches: batches || [] };
+}
+
+export async function getAdminPayments(filters = {}) {
+  let query = supabase
+    .from('shift_payments')
+    .select(`
+      id, shift_id, co_id, facility_id,
+      co_total_pay, adjusted_pay_amount, platform_fee, flat_shift_rate, overtime_pay,
+      payment_status, mobile_money_provider, mobile_money_number,
+      disbursed_at, scheduled_at, created_at,
+      hold_reason, failure_reason, retry_count, selcom_transaction_ref,
+      selcom_response_code, selcom_response_description, disbursement_batch_id
+    `)
+    .order('created_at', { ascending: false });
+
+  if (filters.status) query = query.eq('payment_status', filters.status);
+
+  const { data, error } = await query;
+  if (error || !data) return { data: [], error };
+
+  const coIds       = [...new Set(data.map((p) => p.co_id))];
+  const facilityIds = [...new Set(data.map((p) => p.facility_id))];
+  const shiftIds    = data.map((p) => p.shift_id);
+
+  const [{ data: coUsers }, { data: profiles }, { data: shifts }] = await Promise.all([
+    supabase.from('users').select('id, display_name, phone').in('id', coIds),
+    supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
+    supabase.from('shifts').select('id, shift_date, shift_type').in('id', shiftIds),
+  ]);
+
+  const coMap      = Object.fromEntries((coUsers  || []).map((u) => [u.id, u]));
+  const facMap     = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const shiftMap   = Object.fromEntries((shifts   || []).map((s) => [s.id, s]));
+
+  return {
+    data: data.map((p) => ({
+      ...p,
+      co:       coMap[p.co_id]         || null,
+      facility: facMap[p.facility_id]  || null,
+      shift:    shiftMap[p.shift_id]   || null,
+    })),
+    error: null,
+  };
+}
+
+export async function adminRetryPayment(paymentId) {
+  // Reset to scheduled so the next batch picks it up
+  const { error } = await supabase
+    .from('shift_payments')
+    .update({
+      payment_status: 'scheduled',
+      failure_reason: null,
+      failure_logged_at: null,
+    })
+    .eq('id', paymentId)
+    .eq('payment_status', 'failed');
+
+  return { error };
+}
+
+export async function adminTriggerDisbursement() {
+  return supabase.functions.invoke('process-disbursement-batch', { body: {} });
+}
+
+// ── Admin: Invoices ───────────────────────────────────────────────
+
+export async function getAdminInvoices(filters = {}) {
+  let query = supabase
+    .from('facility_invoices')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (filters.status) query = query.eq('invoice_status', filters.status);
+
+  const { data, error } = await query;
+  if (error || !data) return { data: [], error };
+
+  const facilityIds = [...new Set(data.map((inv) => inv.facility_id))];
+  const { data: profiles } = await supabase
+    .from('facility_profiles')
+    .select('user_id, facility_name')
+    .in('user_id', facilityIds);
+
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+
+  return {
+    data: data.map((inv) => ({
+      ...inv,
+      facility: profileMap[inv.facility_id] || null,
+    })),
+    error: null,
+  };
+}
+
+export async function getInvoiceLineItems(invoiceId) {
+  return supabase
+    .from('facility_invoice_line_items')
+    .select('*')
+    .eq('invoice_id', invoiceId)
+    .order('shift_date', { ascending: true });
+}
+
+export async function adminMarkInvoicePaid(invoiceId, { amount, method, reference }) {
+  return supabase
+    .from('facility_invoices')
+    .update({
+      invoice_status:   'paid',
+      paid_at:          new Date().toISOString(),
+      payment_method:   method,
+      payment_reference: reference || null,
+      amount_received:  amount,
+    })
+    .eq('id', invoiceId);
+}
+
+export async function adminMarkInvoiceSent(invoiceId) {
+  return supabase
+    .from('facility_invoices')
+    .update({ invoice_status: 'sent', sent_at: new Date().toISOString() })
+    .eq('id', invoiceId);
+}
+
+export async function adminMarkInvoiceOverdue(invoiceId) {
+  return supabase
+    .from('facility_invoices')
+    .update({ invoice_status: 'overdue' })
+    .eq('id', invoiceId);
+}
+
+export async function adminTriggerInvoiceGeneration(year, month) {
+  return supabase.functions.invoke('generate-monthly-invoices', { body: { year, month } });
+}
+
+// ── Admin: System Configuration ───────────────────────────────────
+
+export async function getSystemConfig() {
+  const { data, error } = await supabase.from('system_config').select('key, value');
+  if (error || !data) return {};
+  return Object.fromEntries(data.map((c) => [c.key, c.value]));
+}
+
+export async function updateSystemConfig(key, value) {
+  return supabase
+    .from('system_config')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+}
+
+// ── Payment status management (called from api.js after disputes) ─
+
+/** Hold a shift payment when a dispute is raised */
+function holdPayment(shiftId, reason) {
+  supabase.rpc('hold_shift_payment', { p_shift_id: shiftId, p_reason: reason })
+    .catch((e) => console.warn('holdPayment skipped:', e?.message));
+}
+
+/** Release / cancel a payment after admin dispute resolution */
+export async function resolveDisputePayment(shiftId, resolution, adminNote = null) {
+  // resolution: 'completed' | 'no_show' | 'co_fault' | 'facility_fault' | 'pro_rated'
+  // adminNote: { approved_minutes?: number } for pro_rated
+  if (resolution === 'completed') {
+    await supabase.rpc('release_shift_payment', { p_shift_id: shiftId });
+  } else if (resolution === 'no_show' || resolution === 'co_fault') {
+    await supabase.rpc('cancel_shift_payment', { p_shift_id: shiftId });
+  } else if (resolution === 'facility_fault') {
+    // CO gets full flat rate as cancellation fee — already stored as flat_shift_rate
+    await supabase.rpc('release_shift_payment', { p_shift_id: shiftId });
+  } else if (resolution === 'pro_rated' && adminNote?.approved_minutes) {
+    // Recalculate pay based on admin-approved hours
+    const { data: payment } = await supabase
+      .from('shift_payments')
+      .select('flat_shift_rate, overtime_rate_applied')
+      .eq('shift_id', shiftId)
+      .maybeSingle();
+
+    if (payment) {
+      const overtimeRate = payment.overtime_rate_applied || 5000;
+      const scheduledMins = 480; // fallback
+      let adjustedPay = payment.flat_shift_rate;
+      const OVERTIME_THRESHOLD = 60;
+      if (adminNote.approved_minutes - scheduledMins >= OVERTIME_THRESHOLD) {
+        adjustedPay += Math.round(((adminNote.approved_minutes - scheduledMins) / 60) * overtimeRate);
+      }
+      await supabase.rpc('release_shift_payment', {
+        p_shift_id:        shiftId,
+        p_adjusted_amount: adjustedPay,
+        p_is_adjustment:   true,
+      });
+    }
+  }
+}
+
+// Expose holdPayment for use in dispute functions below
+export { holdPayment };
+
+// ── Facility Dashboard Stats ──────────────────────────────────────
 
 export async function getFacilityDashboardStats(facilityId) {
   const { data: shifts } = await supabase

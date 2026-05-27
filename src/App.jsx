@@ -23,6 +23,9 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminFacilities from './pages/admin/Facilities';
 import AdminWorkers from './pages/admin/Workers';
 import AdminShifts from './pages/admin/Shifts';
+import AdminPayments from './pages/admin/Payments';
+
+import COPayments from './pages/co/Payments';
 
 import InviteSetup from './pages/InviteSetup';
 import InvitePending from './pages/InvitePending';
@@ -43,7 +46,8 @@ function AppShell() {
         <Route path="/co/dashboard" element={<RequireCO><CODashboard /></RequireCO>} />
         <Route path="/co/shifts" element={<RequireCO><BrowseShifts /></RequireCO>} />
         <Route path="/co/applications" element={<RequireCO><MyApplications /></RequireCO>} />
-        <Route path="/co/profile" element={<RequireCO><COProfile /></RequireCO>} />
+        <Route path="/co/profile"   element={<RequireCO><COProfile /></RequireCO>} />
+        <Route path="/co/payments"  element={<RequireCO><COPayments /></RequireCO>} />
 
         <Route path="/facility/dashboard" element={<RequireFacility><FacilityDashboard /></RequireFacility>} />
         <Route path="/facility/post-shift" element={<RequireFacility><PostShift /></RequireFacility>} />
@@ -56,6 +60,7 @@ function AppShell() {
         <Route path="/admin/facilities" element={<RequireAdmin><AdminFacilities /></RequireAdmin>} />
         <Route path="/admin/workers"    element={<RequireAdmin><AdminWorkers /></RequireAdmin>} />
         <Route path="/admin/shifts"     element={<RequireAdmin><AdminShifts /></RequireAdmin>} />
+        <Route path="/admin/payments"   element={<RequireAdmin><AdminPayments /></RequireAdmin>} />
         <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
 
         {/* Invite flow — no auth guard, no NavBar */}

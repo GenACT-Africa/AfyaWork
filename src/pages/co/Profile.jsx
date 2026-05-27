@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Stethoscope, Star, Zap, Briefcase, Pencil, X, MapPin, Calendar, Clock } from 'lucide-react';
+import { Camera, Stethoscope, Star, Zap, Briefcase, Pencil, X, MapPin, Calendar, Clock, Smartphone, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getCOProfile, updateCOProfile, updateUserProfile, uploadAvatar, updateCOEmploymentAvailability } from '../../lib/api';
+import { getCOProfile, updateCOProfile, updateUserProfile, uploadAvatar, updateCOEmploymentAvailability, getCOMobileMoneyProfile, upsertCOMobileMoneyProfile } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge, AvailabilityBadge } from '../../components/common/Badge';
@@ -46,6 +46,34 @@ const EMPLOYMENT_LABELS = {
   unemployed:       'Unemployed / between roles',
 };
 
+// ── Mobile Money ──────────────────────────────────────────────────
+
+const MM_PROVIDERS = [
+  { value: 'mpesa',        label: 'M-Pesa',        desc: '(Vodacom Tanzania)' },
+  { value: 'mixx_by_yas',  label: 'Mixx by Yas',   desc: '(Yas Tanzania / Tigo)' },
+  { value: 'airtel_money', label: 'Airtel Money',   desc: '(Airtel Tanzania)' },
+  { value: 'halopesa',     label: 'Halopesa',       desc: '(Halotel Tanzania)' },
+];
+
+const MM_PROVIDER_LABELS = Object.fromEntries(MM_PROVIDERS.map((p) => [p.value, p.label]));
+
+// Known number prefixes (first 3 digits after 0)
+const MM_PREFIXES = {
+  mpesa:        ['074', '075', '076'],
+  mixx_by_yas:  ['071', '065', '067'],
+  airtel_money: ['078', '068', '069'],
+  halopesa:     ['062', '061'],
+};
+
+function checkProviderMismatch(provider, number) {
+  if (!provider || !number) return false;
+  const clean = number.replace(/\s+/g, '').replace(/^\+255/, '0');
+  if (!/^0[67]\d{8}$/.test(clean)) return false; // not a valid TZ number
+  const prefix = clean.slice(0, 3);
+  const known  = MM_PREFIXES[provider] || [];
+  return known.length > 0 && !known.includes(prefix);
+}
+
 function formatAvailableFrom(immediately, date) {
   if (immediately) return 'Immediately available';
   if (date) {
@@ -78,6 +106,12 @@ export default function COProfile() {
   const [form, setForm] = useState({ display_name: '', phone: '', specialization: '', bio: '' });
   const fileRef = useRef(null);
 
+  // Mobile money
+  const [mmProfile, setMmProfile]   = useState(null);
+  const [mmForm, setMmForm]         = useState({ mobile_money_provider: '', mobile_money_number: '', account_name: '' });
+  const [mmSaving, setMmSaving]     = useState(false);
+  const [mmMismatch, setMmMismatch] = useState(false);
+
   // Availability modal
   const [availModal, setAvailModal] = useState(false);
   const [availForm, setAvailForm] = useState({
@@ -94,15 +128,26 @@ export default function COProfile() {
 
   useEffect(() => {
     if (!user?.id) return;
-    getCOProfile(user.id).then(({ data }) => {
-      setProfile(data);
-      setAvatarUrl(data?.users?.avatar_url || null);
+    Promise.all([
+      getCOProfile(user.id),
+      getCOMobileMoneyProfile(user.id),
+    ]).then(([{ data: profileData }, { data: mmData }]) => {
+      setProfile(profileData);
+      setAvatarUrl(profileData?.users?.avatar_url || null);
       setForm({
-        display_name:   data?.users?.display_name || '',
-        phone:          data?.users?.phone || '',
-        specialization: data?.specialization || '',
-        bio:            data?.users?.bio || '',
+        display_name:   profileData?.users?.display_name || '',
+        phone:          profileData?.users?.phone || '',
+        specialization: profileData?.specialization || '',
+        bio:            profileData?.users?.bio || '',
       });
+      if (mmData) {
+        setMmProfile(mmData);
+        setMmForm({
+          mobile_money_provider: mmData.mobile_money_provider || '',
+          mobile_money_number:   mmData.mobile_money_number   || '',
+          account_name:          mmData.account_name          || '',
+        });
+      }
     }).finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -132,6 +177,36 @@ export default function COProfile() {
     ]);
     setSaving(false);
     show('Profile updated successfully!');
+  }
+
+  // ── Mobile money handlers ─────────────────────────────────────
+
+  function setMm(field) {
+    return (e) => {
+      const val = e.target.value;
+      setMmForm((f) => {
+        const next = { ...f, [field]: val };
+        setMmMismatch(checkProviderMismatch(next.mobile_money_provider, next.mobile_money_number));
+        return next;
+      });
+    };
+  }
+
+  async function handleMmSave(e) {
+    e.preventDefault();
+    if (!mmForm.mobile_money_provider) { show('Please select a mobile money provider.', 'error'); return; }
+    if (!mmForm.mobile_money_number)   { show('Please enter your mobile money number.', 'error'); return; }
+    setMmSaving(true);
+    const { data, error } = await upsertCOMobileMoneyProfile(user.id, {
+      mobile_money_provider:            mmForm.mobile_money_provider,
+      mobile_money_number:              mmForm.mobile_money_number,
+      account_name:                     mmForm.account_name || null,
+      provider_mismatch_warning_shown:  mmMismatch,
+    });
+    setMmSaving(false);
+    if (error) { show('Save failed: ' + error.message, 'error'); return; }
+    setMmProfile(data);
+    show('Mobile money details saved!');
   }
 
   // ── Availability modal ──────────────────────────────────────────
@@ -376,6 +451,79 @@ export default function COProfile() {
                 )}
               </div>
             )}
+          </Card>
+
+          {/* ── Mobile Money ── */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Smartphone className="w-5 h-5 text-gray-400" />
+              <h2 className="font-semibold text-gray-900">Mobile Money</h2>
+              {mmProfile && (
+                <span className="ml-auto flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Saved
+                </span>
+              )}
+            </div>
+
+            <p className="text-sm text-gray-500 mb-5">
+              Your mobile money details are used to send your shift payments. Required to receive payment.
+            </p>
+
+            <form onSubmit={handleMmSave} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Money Provider *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MM_PROVIDERS.map((p) => (
+                    <label
+                      key={p.value}
+                      className={`flex flex-col gap-0.5 p-3 rounded-xl border cursor-pointer transition-colors ${
+                        mmForm.mobile_money_provider === p.value
+                          ? 'border-teal-400 bg-teal-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="mm_provider"
+                        value={p.value}
+                        checked={mmForm.mobile_money_provider === p.value}
+                        onChange={setMm('mobile_money_provider')}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-semibold text-gray-900">{p.label}</span>
+                      <span className="text-xs text-gray-400">{p.desc}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <Input
+                label="Mobile Money Number *"
+                type="tel"
+                value={mmForm.mobile_money_number}
+                onChange={setMm('mobile_money_number')}
+                placeholder="07XX XXX XXX"
+              />
+
+              {mmMismatch && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p>
+                    <span className="font-semibold">Number mismatch.</span> This number does not appear to match{' '}
+                    {MM_PROVIDER_LABELS[mmForm.mobile_money_provider]}. Please confirm your details are correct before saving.
+                  </p>
+                </div>
+              )}
+
+              <Input
+                label="Account Name (optional)"
+                value={mmForm.account_name}
+                onChange={setMm('account_name')}
+                placeholder="Name registered on your mobile money account"
+              />
+
+              <Button type="submit" loading={mmSaving}>Save Mobile Money Details</Button>
+            </form>
           </Card>
 
         </div>{/* end left column */}

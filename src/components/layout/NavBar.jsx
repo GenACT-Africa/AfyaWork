@@ -26,6 +26,7 @@ export function NavBar() {
     { to: '/co/dashboard',    label: t('nav.dashboard') },
     { to: '/co/shifts',       label: t('nav.browse_shifts') },
     { to: '/co/applications', label: t('nav.my_applications') },
+    { to: '/co/payments',     label: 'Payments' },
     { to: '/co/profile',      label: t('nav.profile') },
   ];
 
@@ -42,6 +43,7 @@ export function NavBar() {
     { to: '/admin/facilities', label: t('nav.facilities') },
     { to: '/admin/workers',    label: t('nav.workers') },
     { to: '/admin/shifts',     label: t('nav.all_shifts') },
+    { to: '/admin/payments',   label: 'Payments' },
   ];
 
   const links = role === 'admin' ? adminLinks : role === 'co' ? coLinks : facilityLinks;
