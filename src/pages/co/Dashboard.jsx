@@ -68,7 +68,10 @@ export default function CODashboard() {
       subtitle={t('co.activity')}
       action={<Button to="/co/shifts"><Search className="w-4 h-4" />{t('co.browse_shifts')}</Button>}
     >
-      {/* ── Active shifts live tracker (below header, above stat cards) ── */}
+      {/* ── Earnings summary ── */}
+      <EarningsCard stats={payStats} loading={loading} />
+
+      {/* ── Active shifts live tracker ── */}
       <ActiveShiftsBanner
         shifts={allApps
           .filter((a) => a.shifts?.assigned_co_id === user?.id && ACTIVE_SHIFT_SET.has(a.shifts?.status))
@@ -118,9 +121,6 @@ export default function CODashboard() {
           </>
         )}
       </div>
-
-      {/* ── Earnings summary ── */}
-      <EarningsCard stats={payStats} loading={loading} />
 
       {/* Recent applications */}
       <div>
