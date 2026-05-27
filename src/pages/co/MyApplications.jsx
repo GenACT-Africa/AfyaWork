@@ -9,6 +9,7 @@ import {
   acceptShiftOffer, declineShiftOffer,
   coCheckin, coCheckout,
   submitRating,
+  getCOPaymentMap,
 } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Badge } from '../../components/common/Badge';
@@ -58,13 +59,18 @@ export default function MyApplications() {
   const { t } = useTranslation();
   const { show, ToastComponent } = useToast();
   const [applications, setApplications] = useState([]);
+  const [paymentMap,   setPaymentMap]   = useState({});
   const [tab, setTab] = useState('all');
   const [loading, setLoading] = useState(true);
 
   const loadApps = useCallback(async () => {
     if (!user?.id) return;
-    const { data } = await getMyCOApplications(user.id);
+    const [{ data }, pmMap] = await Promise.all([
+      getMyCOApplications(user.id),
+      getCOPaymentMap(user.id),
+    ]);
     setApplications(data || []);
+    setPaymentMap(pmMap);
     setLoading(false);
   }, [user?.id]);
 
@@ -99,6 +105,22 @@ export default function MyApplications() {
     );
     return () => channels.forEach((ch) => supabase.removeChannel(ch));
   }, [applications, loadApps]);
+
+  // ── Real-time: payment status changes ──
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`payments-co-${user.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'shift_payments',
+        filter: `co_id=eq.${user.id}`,
+      }, async () => {
+        const pmMap = await getCOPaymentMap(user.id);
+        setPaymentMap(pmMap);
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user?.id]);
 
   const filtered = sortApplications(
     tab === 'all' ? applications : applications.filter((a) => a.status === tab),
@@ -149,6 +171,7 @@ export default function MyApplications() {
               t={t}
               show={show}
               onRefresh={loadApps}
+              paymentRecord={paymentMap[app.shifts?.id]}
             />
           ))}
         </div>
@@ -159,7 +182,7 @@ export default function MyApplications() {
 
 // ── ApplicationCard ───────────────────────────────────────────────
 
-function ApplicationCard({ app, userId, t, show, onRefresh }) {
+function ApplicationCard({ app, userId, t, show, onRefresh, paymentRecord }) {
   const shift    = app.shifts;
   const facility = shift?.facility_profiles;
   const status   = shift?.status;
@@ -265,6 +288,7 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
             shift={shift}
             role="co"
             myRating={myRating}
+            paymentRecord={paymentRecord}
             facilityName={facility?.facility_name}
             onAccept={handleAccept}
             onDecline={() => setDeclineModal(true)}

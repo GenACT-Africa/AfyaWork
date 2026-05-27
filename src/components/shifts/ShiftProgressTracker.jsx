@@ -24,11 +24,32 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CheckCircle2, LogIn, LogOut, CheckCircle, Star,
-  AlertTriangle, ChevronDown, ChevronUp, MapPin,
+  AlertTriangle, ChevronDown, ChevronUp, MapPin, Wallet,
 } from 'lucide-react';
 import { Button } from '../common/Button';
+
+// ── Payment status display map ────────────────────────────────────
+
+const PAYMENT_STATUS_DISPLAY = {
+  pending:    { label: 'Calculating...',       cls: 'bg-gray-100 text-gray-500',    desc: 'Payment amount is being calculated.' },
+  scheduled:  { label: 'Scheduled',            cls: 'bg-blue-100 text-blue-700',    desc: "Queued for tonight's disbursement batch." },
+  processing: { label: 'Processing',           cls: 'bg-indigo-100 text-indigo-700', desc: 'Transfer is in progress.' },
+  disbursed:  { label: 'Paid ✓',              cls: 'bg-emerald-100 text-emerald-700', desc: null },
+  failed:     { label: 'Failed',               cls: 'bg-red-100 text-red-700',       desc: null },
+  held:       { label: 'On Hold',              cls: 'bg-amber-100 text-amber-700',   desc: 'Admin is reviewing this payment.' },
+  released:   { label: 'Released',             cls: 'bg-teal-100 text-teal-700',     desc: 'Payment re-queued for disbursement.' },
+  cancelled:  { label: 'Cancelled',            cls: 'bg-gray-100 text-gray-400',     desc: null },
+};
+
+const PROVIDER_LABELS = {
+  mpesa:        'M-Pesa',
+  mixx_by_yas:  'Mixx by Yas',
+  airtel_money: 'Airtel Money',
+  halopesa:     'Halopesa',
+};
 
 // ── Stage configuration ───────────────────────────────────────────
 
@@ -256,12 +277,57 @@ function ActionPanel({ bg, title, body, children }) {
   );
 }
 
+// ── Payment status panel (CO-only) ───────────────────────────────
+
+function PaymentStatusPanel({ paymentRecord }) {
+  const status = paymentRecord?.payment_status;
+  const pd     = status ? PAYMENT_STATUS_DISPLAY[status] : null;
+  const amount = paymentRecord?.adjusted_pay_amount ?? paymentRecord?.co_total_pay;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-200/70 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-2 min-w-0">
+        <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
+        {amount != null && (
+          <span className="text-sm font-bold text-gray-900">
+            TZS {Number(amount).toLocaleString()}
+          </span>
+        )}
+        {pd ? (
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pd.cls}`}>{pd.label}</span>
+        ) : (
+          <span className="text-xs text-gray-400 animate-pulse">Payment queuing…</span>
+        )}
+      </div>
+      <div className="flex flex-col items-end min-w-0 shrink-0">
+        {status === 'disbursed' && paymentRecord?.mobile_money_provider && (
+          <p className="text-xs text-gray-400">
+            {PROVIDER_LABELS[paymentRecord.mobile_money_provider]} ···{paymentRecord.mobile_money_number?.slice(-4)}
+            {paymentRecord.disbursed_at && (
+              <> · {new Date(paymentRecord.disbursed_at).toLocaleDateString('en-TZ', { day: 'numeric', month: 'short' })}</>
+            )}
+          </p>
+        )}
+        {status === 'failed' && paymentRecord?.failure_reason && (
+          <p className="text-xs text-red-500">{paymentRecord.failure_reason}</p>
+        )}
+        {pd?.desc && status !== 'failed' && status !== 'disbursed' && (
+          <p className="text-xs text-gray-400">{pd.desc}</p>
+        )}
+        <Link to="/co/payments" className="text-xs text-teal-600 hover:text-teal-700 font-medium mt-0.5">
+          View payments →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // ── Next Action: CO view ──────────────────────────────────────────
 
 function CONextAction({
   shift, myRating, facilityName, facilityAddress,
   onAccept, onDecline, onCheckin, onCheckout, onRate,
-  actionLoading,
+  actionLoading, paymentRecord,
 }) {
   const s = shift.status;
   const dateStr = new Date(shift.shift_date + 'T00:00:00')
@@ -348,6 +414,18 @@ function CONextAction({
             <Star className="w-4 h-4" /> Rate Now
           </Button>
         </div>
+        <PaymentStatusPanel paymentRecord={paymentRecord} />
+      </ActionPanel>
+    );
+  }
+
+  if (s === 'completed' && myRating) {
+    return (
+      <ActionPanel bg="emerald">
+        <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Shift complete
+        </p>
+        <PaymentStatusPanel paymentRecord={paymentRecord} />
       </ActionPanel>
     );
   }
@@ -369,7 +447,7 @@ function CONextAction({
 function FacilityNextAction({
   shift, myRating, coName,
   onApproveCheckin, onDisputeCheckin, onApproveCheckout, onDisputeCheckout, onRate,
-  actionLoading,
+  actionLoading, paymentRecord,
 }) {
   const s = shift.status;
   const co = coName || 'The CO';
@@ -451,6 +529,7 @@ function FacilityNextAction({
   }
 
   if (s === 'completed' && !myRating) {
+    const payAmount = paymentRecord?.adjusted_pay_amount ?? paymentRecord?.co_total_pay;
     return (
       <ActionPanel bg="emerald">
         <p className="font-semibold text-gray-900">Shift complete! How did {co} perform?</p>
@@ -459,6 +538,31 @@ function FacilityNextAction({
           <Button size="sm" loading={actionLoading === 'rate'} onClick={onRate}>
             <Star className="w-4 h-4" /> Rate Now
           </Button>
+        </div>
+        <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center gap-2 text-xs text-emerald-800">
+          <Wallet className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            CO payment of <strong>TZS {payAmount != null ? Number(payAmount).toLocaleString() : '—'}</strong> queued for tonight's disbursement batch.
+          </span>
+        </div>
+      </ActionPanel>
+    );
+  }
+
+  if (s === 'completed' && myRating) {
+    const payAmount  = paymentRecord?.adjusted_pay_amount ?? paymentRecord?.co_total_pay;
+    const payStatus  = paymentRecord?.payment_status;
+    const pd         = payStatus ? PAYMENT_STATUS_DISPLAY[payStatus] : null;
+    return (
+      <ActionPanel bg="gray">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <p className="font-semibold text-gray-900">Shift complete</p>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+          <Wallet className="w-4 h-4 text-gray-400 shrink-0" />
+          <span>CO payment{payAmount != null ? `: TZS ${Number(payAmount).toLocaleString()}` : ''}</span>
+          {pd && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pd.cls}`}>{pd.label}</span>}
         </div>
       </ActionPanel>
     );
@@ -479,7 +583,7 @@ function FacilityNextAction({
 // ── Main export ───────────────────────────────────────────────────
 
 export function ShiftProgressTracker({
-  shift, role, myRating,
+  shift, role, myRating, paymentRecord,
   coName, facilityName, facilityAddress,
   onAccept, onDecline, onCheckin, onCheckout,
   onApproveCheckin, onDisputeCheckin, onApproveCheckout, onDisputeCheckout,
@@ -515,7 +619,7 @@ export function ShiftProgressTracker({
           onClick={() => setExpanded((v) => !v)}
           className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl text-sm font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors"
         >
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-2 flex-wrap">
             <CheckCircle className="w-4 h-4 text-emerald-600" />
             Completed
             {shift.checkout_approved_at && (
@@ -524,6 +628,12 @@ export function ShiftProgressTracker({
               </span>
             )}
             <span className="text-xs text-emerald-600">· Rated ⭐</span>
+            {role === 'co' && paymentRecord?.payment_status === 'disbursed' && (
+              <span className="text-xs font-semibold bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">· Paid ✓</span>
+            )}
+            {role === 'co' && paymentRecord?.payment_status === 'scheduled' && (
+              <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">· Payment Tonight</span>
+            )}
           </span>
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -561,8 +671,9 @@ export function ShiftProgressTracker({
             ))}
           </div>
 
-          {/* ── Next Action block — hidden for fully done shifts ── */}
-          {!isFullyDone && (
+          {/* ── Next Action block ── */}
+          {/* Always rendered for CO so payment status is visible even when fully done */}
+          {(role === 'co' || !isFullyDone) && (
             role === 'co' ? (
               <CONextAction
                 shift={shift}
@@ -575,6 +686,7 @@ export function ShiftProgressTracker({
                 onCheckout={onCheckout}
                 onRate={onRate}
                 actionLoading={actionLoading}
+                paymentRecord={paymentRecord}
               />
             ) : (
               <FacilityNextAction
@@ -587,6 +699,7 @@ export function ShiftProgressTracker({
                 onDisputeCheckout={onDisputeCheckout}
                 onRate={onRate}
                 actionLoading={actionLoading}
+                paymentRecord={paymentRecord}
               />
             )
           )}

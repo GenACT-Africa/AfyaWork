@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   getShiftWithApplicants, approveApplication, rejectApplication, cancelShift,
   approveCheckin, disputeCheckin, approveCheckout, disputeCheckout, submitRating,
+  getShiftPayment,
 } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
@@ -37,6 +38,7 @@ export default function ShiftDetail() {
   const { show, ToastComponent } = useToast();
 
   const [shift, setShift]           = useState(null);
+  const [paymentRecord, setPaymentRecord] = useState(null);
   const [loading, setLoading]       = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [cancelModal, setCancelModal]   = useState(false);
@@ -53,6 +55,10 @@ export default function ShiftDetail() {
     if (data.facility_id !== user?.id) { navigate('/facility/shifts'); return; }
     setShift(data);
     setLoading(false);
+    // Fetch payment record if shift is completed (non-blocking)
+    if (data.status === 'completed') {
+      getShiftPayment(id).then(({ data: p }) => setPaymentRecord(p || null));
+    }
   }, [id, user?.id, navigate]);
 
   useEffect(() => { loadShift(); }, [loadShift]);
@@ -187,6 +193,7 @@ export default function ShiftDetail() {
             shift={shift}
             role="facility"
             myRating={facilityRating}
+            paymentRecord={paymentRecord}
             coName={assignedCO?.display_name}
             onApproveCheckin={handleApproveCheckin}
             onDisputeCheckin={() => { setDisputeModal('checkin'); setDisputeReason(''); }}

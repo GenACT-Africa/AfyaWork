@@ -304,12 +304,61 @@ export async function approveCheckout(shiftId) {
   const result = await supabase.rpc('approve_checkout', { p_shift_id: shiftId });
   if (!result.error) {
     wa('checkout_approved', shiftId);
-    // Fire-and-forget: calculate CO pay and create payment record
-    supabase.functions
-      .invoke('calculate-shift-payment', { body: { shift_id: shiftId } })
-      .catch((e) => console.warn('Payment calculation skipped:', e?.message));
+    // Fire-and-forget: invoke edge function for full calculation (overtime, config rates etc.)
+    // Falls back to a direct insert if the function isn't deployed yet.
+    (async () => {
+      const { error: fnErr } = await supabase.functions
+        .invoke('calculate-shift-payment', { body: { shift_id: shiftId } });
+
+      if (fnErr) {
+        console.warn('calculate-shift-payment unavailable — creating basic payment record:', fnErr.message);
+        const { data: s } = await supabase
+          .from('shifts')
+          .select('assigned_co_id, facility_id, pay_amount, mobile_money_provider, mobile_money_number')
+          .eq('id', shiftId)
+          .single();
+        if (s) {
+          const { data: mm } = await supabase
+            .from('co_mobile_money')
+            .select('mobile_money_provider, mobile_money_number')
+            .eq('co_id', s.assigned_co_id)
+            .maybeSingle();
+          await supabase.from('shift_payments').upsert({
+            shift_id:              shiftId,
+            co_id:                 s.assigned_co_id,
+            facility_id:           s.facility_id,
+            co_total_pay:          s.pay_amount,
+            adjusted_pay_amount:   s.pay_amount,
+            flat_shift_rate:       s.pay_amount,
+            overtime_pay:          0,
+            platform_fee:          0,
+            mobile_money_provider: mm?.mobile_money_provider ?? null,
+            mobile_money_number:   mm?.mobile_money_number   ?? null,
+            payment_status:        mm ? 'scheduled' : 'pending',
+          }, { onConflict: 'shift_id', ignoreDuplicates: true });
+        }
+      }
+    })();
   }
   return result;
+}
+
+/** Fetch the payment record for a single shift (used by tracker and facility detail) */
+export async function getShiftPayment(shiftId) {
+  return supabase
+    .from('shift_payments')
+    .select('id, payment_status, co_total_pay, adjusted_pay_amount, overtime_pay, platform_fee, mobile_money_provider, mobile_money_number, disbursed_at, failure_reason, hold_reason, selcom_transaction_ref')
+    .eq('shift_id', shiftId)
+    .maybeSingle();
+}
+
+/** Lightweight: fetch all payment records for a CO and return a shiftId → record map */
+export async function getCOPaymentMap(coId) {
+  const { data } = await supabase
+    .from('shift_payments')
+    .select('shift_id, payment_status, co_total_pay, adjusted_pay_amount, overtime_pay, mobile_money_provider, mobile_money_number, disbursed_at, failure_reason, hold_reason')
+    .eq('co_id', coId);
+  return Object.fromEntries((data || []).map((p) => [p.shift_id, p]));
 }
 
 /** Facility disputes CO checkout claim */
