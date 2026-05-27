@@ -25,7 +25,7 @@
 
 import { useState } from 'react';
 import {
-  CheckCircle2, LogIn, Activity, LogOut, CheckCircle, Star,
+  CheckCircle2, LogIn, LogOut, CheckCircle, Star,
   AlertTriangle, ChevronDown, ChevronUp, MapPin,
 } from 'lucide-react';
 import { Button } from '../common/Button';
@@ -33,12 +33,12 @@ import { Button } from '../common/Button';
 // ── Stage configuration ───────────────────────────────────────────
 
 const STAGES = [
-  { coLabel: 'Offer Accepted',  facilityLabel: 'CO Accepted Offer',  Icon: CheckCircle2 },
-  { coLabel: 'Checked In',      facilityLabel: 'CO Checked In',       Icon: LogIn        },
-  { coLabel: 'Shift Active',    facilityLabel: 'Shift Active',        Icon: Activity     },
-  { coLabel: 'Checked Out',     facilityLabel: 'CO Checked Out',      Icon: LogOut       },
-  { coLabel: 'Shift Complete',  facilityLabel: 'Shift Complete',      Icon: CheckCircle  },
-  { coLabel: 'Rated',           facilityLabel: 'Rated',               Icon: Star         },
+  { coLabel: 'Offer Accepted',  facilityLabel: 'CO Accepted Offer' },
+  { coLabel: 'Checked In',      facilityLabel: 'CO Checked In'     },
+  { coLabel: 'Shift Active',    facilityLabel: 'Shift Active'      },
+  { coLabel: 'Checked Out',     facilityLabel: 'CO Checked Out'    },
+  { coLabel: 'Shift Complete',  facilityLabel: 'Shift Complete'    },
+  { coLabel: 'Rated',           facilityLabel: 'Rated'             },
 ];
 
 // ── Derive stage states from shift data ───────────────────────────
@@ -101,38 +101,36 @@ function fmtDateTime(ts) {
 }
 
 const LABEL_CLS = {
-  done:     'text-green-700 font-medium',
-  current:  'text-blue-600 font-bold',
+  done:     'text-emerald-700 font-semibold',
+  current:  'text-blue-700 font-bold',
   disputed: 'text-amber-700 font-bold',
   upcoming: 'text-gray-400',
 };
 
 const LINE_CLS = {
-  done:     'bg-green-400',
+  done:     'bg-emerald-400',
   other:    'bg-gray-200',
 };
 
 // ── Stage circle ──────────────────────────────────────────────────
 
-function StageCircle({ state, Icon }) {
+function StageCircle({ state }) {
   const ring = {
-    done:     'bg-green-500 border-green-500',
-    current:  'bg-blue-500 border-blue-500',
-    disputed: 'bg-amber-500 border-amber-500',
-    upcoming: 'bg-white border-gray-300',
+    done:     'bg-emerald-500 border-emerald-500',
+    current:  'bg-blue-500   border-blue-500',
+    disputed: 'bg-amber-500  border-amber-500',
+    upcoming: 'bg-white      border-gray-300',
   };
-  const iconCls = state === 'upcoming' ? 'text-gray-300' : 'text-white';
 
   return (
     <div className="relative flex items-center justify-center shrink-0">
       {state === 'current' && (
-        <span className="absolute w-10 h-10 rounded-full bg-blue-400 animate-ping opacity-30" />
+        <span className="absolute w-9 h-9 rounded-full bg-blue-400 animate-ping opacity-25" />
       )}
-      <div className={`relative w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${ring[state] || ring.upcoming}`}>
-        {state === 'disputed'
-          ? <AlertTriangle className="w-4 h-4 text-white" />
-          : <Icon className={`w-4 h-4 ${iconCls} transition-colors duration-500`} />
-        }
+      <div className={`relative w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${ring[state] || ring.upcoming}`}>
+        {state === 'done'     && <CheckCircle2  className="w-3.5 h-3.5 text-white" />}
+        {state === 'current'  && <span className="w-2 h-2 bg-white rounded-full" />}
+        {state === 'disputed' && <AlertTriangle className="w-3 h-3 text-white" />}
       </div>
     </div>
   );
@@ -153,7 +151,7 @@ function StageHorizontal({ cfg, stage, role, isFirst, isLast, prevDone }) {
       {/* Circle row */}
       <div className="flex items-center w-full">
         {!isFirst  && <div className={`flex-1 h-0.5 transition-colors duration-500 ${leftLineCls}`}  />}
-        <StageCircle state={stage.state} Icon={cfg.Icon} />
+        <StageCircle state={stage.state} />
         {!isLast   && <div className={`flex-1 h-0.5 transition-colors duration-500 ${rightLineCls}`} />}
       </div>
 
@@ -185,7 +183,7 @@ function StageVertical({ cfg, stage, role, isLast }) {
     <div className="flex gap-3">
       {/* Circle + line */}
       <div className="flex flex-col items-center">
-        <StageCircle state={stage.state} Icon={cfg.Icon} />
+        <StageCircle state={stage.state} />
         {!isLast && (
           <div className={`w-0.5 flex-1 min-h-[20px] mt-1 mb-1 transition-colors duration-500 ${lineCls}`} />
         )}
