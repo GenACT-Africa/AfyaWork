@@ -542,7 +542,7 @@ function FacilityNextAction({
         <div className="mt-3 pt-3 border-t border-emerald-200/60 flex items-center gap-2 text-xs text-emerald-800">
           <Wallet className="w-3.5 h-3.5 shrink-0" />
           <span>
-            CO payment of <strong>TZS {payAmount != null ? Number(payAmount).toLocaleString() : '—'}</strong> queued for tonight's disbursement batch.
+            CO payment of <strong>TZS {payAmount != null ? Number(payAmount).toLocaleString() : '—'}</strong> is pending admin approval.
           </span>
         </div>
       </ActionPanel>

@@ -304,42 +304,13 @@ export async function approveCheckout(shiftId) {
   const result = await supabase.rpc('approve_checkout', { p_shift_id: shiftId });
   if (!result.error) {
     wa('checkout_approved', shiftId);
-    // Fire-and-forget: invoke edge function for full calculation (overtime, config rates etc.)
-    // Falls back to a direct insert if the function isn't deployed yet.
-    (async () => {
-      const { error: fnErr } = await supabase.functions
-        .invoke('calculate-shift-payment', { body: { shift_id: shiftId } });
-
-      if (fnErr) {
-        console.warn('calculate-shift-payment unavailable — creating basic payment record:', fnErr.message);
-        const { data: s } = await supabase
-          .from('shifts')
-          .select('assigned_co_id, facility_id, pay_amount, mobile_money_provider, mobile_money_number')
-          .eq('id', shiftId)
-          .single();
-        if (s) {
-          const { data: mm } = await supabase
-            .from('co_mobile_money')
-            .select('mobile_money_provider, mobile_money_number')
-            .eq('co_id', s.assigned_co_id)
-            .maybeSingle();
-          // Always 'pending' — admin approves to 'scheduled' from the dashboard
-          await supabase.from('shift_payments').upsert({
-            shift_id:              shiftId,
-            co_id:                 s.assigned_co_id,
-            facility_id:           s.facility_id,
-            co_total_pay:          s.pay_amount,
-            adjusted_pay_amount:   s.pay_amount,
-            flat_shift_rate:       s.pay_amount,
-            overtime_pay:          0,
-            platform_fee:          0,
-            mobile_money_provider: mm?.mobile_money_provider ?? null,
-            mobile_money_number:   mm?.mobile_money_number   ?? null,
-            payment_status:        'pending',
-          }, { onConflict: 'shift_id', ignoreDuplicates: true });
-        }
-      }
-    })();
+    // Fire-and-forget: refine the basic payment record created by approve_checkout()
+    // with full overtime + platform fee calculation from system config.
+    // Safe to skip if the edge function isn't deployed — the RPC already
+    // created a valid 'pending' record with the flat rate.
+    supabase.functions
+      .invoke('calculate-shift-payment', { body: { shift_id: shiftId } })
+      .catch((e) => console.warn('calculate-shift-payment skipped:', e?.message));
   }
   return result;
 }
@@ -987,6 +958,12 @@ export async function adminMarkPaymentPaid(paymentId, { reference = '', method =
     })
     .eq('id', paymentId)
     .in('payment_status', ['scheduled', 'pending']);
+
+  // Notify CO via WhatsApp that their payment has been sent
+  if (!error) {
+    wa('payment_disbursed', null, { payment_id: paymentId });
+  }
+
   return { error };
 }
 

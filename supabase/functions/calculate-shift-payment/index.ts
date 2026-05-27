@@ -70,20 +70,6 @@ serve(async (req) => {
       });
     }
 
-    // ── 2. Check if payment record already exists (idempotency) ──
-    const { data: existing } = await db
-      .from('shift_payments')
-      .select('id')
-      .eq('shift_id', shift_id)
-      .maybeSingle();
-
-    if (existing) {
-      console.log('calculate-shift-payment: payment already exists for shift', shift_id);
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
-    }
-
     // ── 3. Read system config ─────────────────────────────────────
     const { data: configs } = await db
       .from('system_config')
@@ -125,13 +111,12 @@ serve(async (req) => {
       .eq('co_id', coId)
       .maybeSingle();
 
-    // ── 6. Create payment record ──────────────────────────────────
-    // Payment always starts as 'pending' — admin approves to 'scheduled'
-    // from the Admin Payments dashboard before the batch picks it up.
-    const paymentRecord = {
-      shift_id:                         shift_id,
-      co_id:                            coId,
-      facility_id:                      shift.facility_id,
+    // ── 6. Upsert payment record ──────────────────────────────────
+    // approve_checkout() (SECURITY DEFINER) already created a basic record.
+    // We try INSERT first; on unique conflict we UPDATE only the calculation
+    // fields — and only while the payment is still 'pending' so we never
+    // overwrite an admin-approved or disbursed record.
+    const calcFields = {
       flat_shift_rate:                  flatRate,
       scheduled_shift_duration_minutes: scheduledDurationMinutes,
       approved_hours_worked_minutes:    approvedMinutes || null,
@@ -139,20 +124,39 @@ serve(async (req) => {
       overtime_rate_applied:            overtimeHourlyRate,
       overtime_pay:                     overtimePay,
       co_total_pay:                     coTotalPay,
+      adjusted_pay_amount:              coTotalPay,
       platform_fee:                     platformFee,
       facility_total_charge:            facilityTotalCharge,
-      tax_withheld_amount:              0,
-      payment_status:                   'pending',   // admin must approve → 'scheduled'
       mobile_money_provider:            mmProfile?.mobile_money_provider ?? null,
       mobile_money_number:              mmProfile?.mobile_money_number ?? null,
-      scheduled_at:                     null,        // set by admin on approval
     };
 
     const { error: insertErr } = await db
       .from('shift_payments')
-      .insert(paymentRecord);
+      .insert({
+        shift_id:           shift_id,
+        co_id:              coId,
+        facility_id:        shift.facility_id,
+        tax_withheld_amount: 0,
+        payment_status:     'pending',
+        scheduled_at:       null,
+        ...calcFields,
+      });
 
-    if (insertErr) {
+    if (insertErr?.code === '23505') {
+      // Record already exists (created by approve_checkout RPC) — update calc fields only
+      console.log('calculate-shift-payment: refining basic record for shift', shift_id);
+      const { error: updateErr } = await db
+        .from('shift_payments')
+        .update(calcFields)
+        .eq('shift_id', shift_id)
+        .eq('payment_status', 'pending');  // never touch already-approved payments
+
+      if (updateErr) {
+        console.error('calculate-shift-payment: update failed', updateErr);
+        // Non-fatal — basic record exists, just not fully calculated
+      }
+    } else if (insertErr) {
       console.error('calculate-shift-payment: insert failed', insertErr);
       return new Response(JSON.stringify({ error: insertErr.message }), {
         status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
