@@ -89,7 +89,7 @@ export async function getShiftWithApplicants(shiftId) {
   const { data: coProfiles } = coIds.length
     ? await supabase
         .from('co_profiles')
-        .select('user_id, license_number, specialization, subscription_tier, verified')
+        .select('user_id, license_number, specialization, subscription_tier, verified, employment_availability_status, available_from_immediately, available_from_date, preferred_location, preferred_location_text, current_employment_status, availability_note')
         .in('user_id', coIds)
     : { data: [] };
 

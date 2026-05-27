@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CalendarDays, Clock, Banknote, Users, CheckCircle, XCircle,
   AlertTriangle, Eye, X, Mail, Phone, Award, Star, Zap, Stethoscope,
-  LogIn, LogOut, MessageSquare, Shield,
+  LogIn, LogOut, MessageSquare, Shield, Briefcase, MapPin,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -13,7 +13,7 @@ import {
 } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
-import { Badge } from '../../components/common/Badge';
+import { Badge, AvailabilityBadge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { StarRating } from '../../components/common/StarRating';
 import { useToast } from '../../components/common/Toast';
@@ -619,6 +619,67 @@ function ApplicantModal({ app, shiftFilled, onClose, onApprove, onReject, approv
               <p className="text-sm text-gray-400 italic">This worker hasn't added a bio yet.</p>
             )}
           </div>
+
+          {/* Employment availability — only shown when CO has declared a status */}
+          {profile?.employment_availability_status && (
+            <div className="border border-gray-100 rounded-xl p-4 space-y-2.5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Employment Availability</p>
+
+              <AvailabilityBadge status={profile.employment_availability_status} />
+
+              {profile.employment_availability_status === 'not_looking' && (
+                <p className="text-sm text-gray-500">Not currently looking for full-time or permanent roles.</p>
+              )}
+
+              {['open_fulltime', 'open_parttime'].includes(profile.employment_availability_status) && (
+                <div className="space-y-1.5 text-sm text-gray-600">
+                  {/* Available from */}
+                  {(profile.available_from_immediately || profile.available_from_date) && (
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>
+                        {profile.available_from_immediately
+                          ? 'Immediately available'
+                          : 'From ' + new Date(String(profile.available_from_date) + 'T00:00:00')
+                              .toLocaleDateString('en-TZ', { month: 'long', year: 'numeric' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Preferred location */}
+                  {profile.preferred_location && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>
+                        {profile.preferred_location === 'specific_region' && profile.preferred_location_text
+                          ? profile.preferred_location_text
+                          : profile.preferred_location === 'dar_only'
+                            ? 'Dar es Salaam only'
+                            : 'Open to all regions in Tanzania'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Current employment status */}
+                  {profile.current_employment_status && (
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>
+                        {{ employed_looking: 'Currently employed, looking to move', locum_only: 'Currently doing locum shifts only', unemployed: 'Unemployed / between roles' }[profile.current_employment_status]}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Note */}
+                  {profile.availability_note && (
+                    <p className="text-xs text-gray-500 italic bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 mt-1">
+                      "{profile.availability_note}"
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 text-xs text-gray-400 pb-1 border-b border-gray-100">
             <Clock className="w-3.5 h-3.5 shrink-0" />
