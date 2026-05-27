@@ -1,22 +1,23 @@
 /**
- * AfyaWork — Twilio WhatsApp Template Creator
+ * AfyaWork — Twilio WhatsApp Template Creator (v2)
  *
- * Run this ONCE to create all message templates in Twilio's Content Library
- * and submit them for WhatsApp / Meta approval.
+ * Recreates all templates WITHOUT URL variables, which is the main reason
+ * Meta rejects templates for business-initiated (proactive) messaging.
+ * URLs are now hardcoded as afyawork.netlify.app — only non-URL data is
+ * passed as variables.
  *
  * Usage:
  *   TWILIO_ACCOUNT_SID=ACxxx TWILIO_AUTH_TOKEN=xxx \
- *     deno run --allow-net create-templates.ts
+ *     deno run --allow-net --allow-env create-templates.ts
  *
- * After running:
- *   1. Templates appear in Twilio Console → Messaging → Content Template Builder
- *   2. WhatsApp approval typically takes 1–48 hours
- *   3. Copy the printed ContentSid values → set them as Supabase Edge Function
- *      Secrets (WA_TMPL_INVITE, WA_TMPL_SHIFT_OFFER, etc.)
+ * Before running:
+ *   1. In Twilio Console → Content Template Builder, DELETE the old rejected
+ *      templates (afyawork_shift_offer, afyawork_offer_accepted, etc.)
+ *   2. Run this script — it creates v2 templates with _v2 suffix
+ *   3. Set the printed SIDs as Supabase Edge Function Secrets
  *
- * Once the SID env vars are set and templates are approved, the send-whatsapp
- * function automatically switches from free-form messages to approved templates
- * — which work 24/7, not just within the 24-hour WhatsApp messaging window.
+ * After WhatsApp approves business-initiated, messages will reach users
+ * at any time — not just within the 24-hour messaging window.
  */
 
 const ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
@@ -30,126 +31,121 @@ if (!ACCOUNT_SID || !AUTH_TOKEN) {
 const BASE = 'https://content.twilio.com/v1';
 const AUTH = `Basic ${btoa(`${ACCOUNT_SID}:${AUTH_TOKEN}`)}`;
 
-// ── Template definitions ──────────────────────────────────────────────────────
+// ── Template definitions (v2 — no URL variables) ──────────────────────────────
 //
-// Rules for WhatsApp template bodies:
-//   • Must NOT start with a variable placeholder
-//   • Variable placeholders are {{1}}, {{2}}, etc. (consecutive, starting at 1)
-//   • Body ≤ 1,024 characters
-//   • Category UTILITY = transactional (highest approval rate for service apps)
-//   • "variables" map provides sample values shown in Twilio Console preview
+// Key rule: Meta rejects business-initiated templates that have full URLs
+// inside variables ({{n}} = "https://..."). Fix: hardcode the domain and
+// use "Open the AfyaWork app" as the CTA, or hardcode specific app paths.
+//
+// The invite template is the ONLY exception — it MUST have a unique link
+// per user, so we keep the URL variable there.
 
 const TEMPLATES = [
-  // ── 1. User invite ──────────────────────────────────────────────────────────
+  // ── 1. User invite (keeps URL variable — unique per user, no other option) ───
   {
     envKey:        'WA_TMPL_INVITE',
-    friendlyName:  'afyawork_invite',
-    waName:        'afyawork_invite',
+    friendlyName:  'afyawork_invite_v2',
+    waName:        'afyawork_invite_v2',
     category:      'UTILITY',
     body:
       'Hi {{1}}, you have been invited to join AfyaWork as a {{2}}.\n\n' +
       'AfyaWork connects healthcare facilities with Clinical Officers for locum shifts in Tanzania.\n\n' +
-      'Activate your account here:\n{{3}}\n\n' +
+      'Activate your account:\n{{3}}\n\n' +
       'This link expires in 72 hours.',
     sampleVars: {
       '1': 'Amina',
       '2': 'Clinical Officer',
-      '3': 'https://afyawork.netlify.app/auth/set-password?token=sample',
+      '3': 'https://afyawork.netlify.app/auth/set-password?token=sample123',
     },
   },
 
-  // ── 2. Shift offer sent to CO ───────────────────────────────────────────────
+  // ── 2. Shift offer to CO ────────────────────────────────────────────────────
   {
     envKey:        'WA_TMPL_SHIFT_OFFER',
-    friendlyName:  'afyawork_shift_offer',
-    waName:        'afyawork_shift_offer',
+    friendlyName:  'afyawork_shift_offer_v2',
+    waName:        'afyawork_shift_offer_v2',
     category:      'UTILITY',
     body:
       'Hello {{1}}, you have been selected for a shift on AfyaWork!\n\n' +
       'Shift: {{2}}\n' +
       'Pay: {{3}}\n' +
       'Facility: {{4}}\n\n' +
-      'You have 24 hours to accept or decline. Log in to respond:\n{{5}}',
+      'You have 24 hours to accept or decline. Open the AfyaWork app to respond.',
     sampleVars: {
-      '1': 'Amina',
+      '1': 'Dr. Amina Said',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
       '3': 'TZS 80,000',
       '4': 'Muhimbili National Hospital',
-      '5': 'https://afyawork.netlify.app/co/applications',
     },
   },
 
   // ── 3. Offer accepted — notify facility ────────────────────────────────────
   {
     envKey:        'WA_TMPL_OFFER_ACCEPTED',
-    friendlyName:  'afyawork_offer_accepted',
-    waName:        'afyawork_offer_accepted',
+    friendlyName:  'afyawork_offer_accepted_v2',
+    waName:        'afyawork_offer_accepted_v2',
     category:      'UTILITY',
     body:
       'Good news from AfyaWork! {{1}} has accepted your shift offer for {{2}}.\n\n' +
-      'They will check in on shift day and you will receive a notification when they arrive.\n\n' +
-      'View shift details:\n{{3}}',
+      'They will check in on shift day. You will receive a notification when they arrive.\n\n' +
+      'Open the AfyaWork app to view shift details.',
     sampleVars: {
       '1': 'Dr. Amina Said',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
-      '3': 'https://afyawork.netlify.app/facility/shifts/abc123',
     },
   },
 
   // ── 4. Offer declined — notify facility ────────────────────────────────────
   {
     envKey:        'WA_TMPL_OFFER_DECLINED',
-    friendlyName:  'afyawork_offer_declined',
-    waName:        'afyawork_offer_declined',
+    friendlyName:  'afyawork_offer_declined_v2',
+    waName:        'afyawork_offer_declined_v2',
     category:      'UTILITY',
     body:
       'AfyaWork update: {{1}} has declined the shift offer for {{2}}.\n\n' +
-      'The shift is now open again. Log in to select a new applicant:\n{{3}}',
+      'The shift is now open again. Open the AfyaWork app to select a new applicant.',
     sampleVars: {
       '1': 'Dr. Amina Said',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
-      '3': 'https://afyawork.netlify.app/facility/shifts/abc123',
     },
   },
 
   // ── 5. CO checked in — notify facility ─────────────────────────────────────
   {
     envKey:        'WA_TMPL_CO_CHECKED_IN',
-    friendlyName:  'afyawork_co_checked_in',
-    waName:        'afyawork_co_checked_in',
+    friendlyName:  'afyawork_co_checked_in_v2',
+    waName:        'afyawork_co_checked_in_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: {{1}} has checked in for {{2}} at {{3}}.\n\n' +
-      'Please confirm they are on-site to start the shift:\n{{4}}',
+      'Please open the AfyaWork app to confirm they are on-site and start the shift.',
     sampleVars: {
       '1': 'Dr. Amina Said',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
       '3': '8:04 AM',
-      '4': 'https://afyawork.netlify.app/facility/shifts/abc123',
     },
   },
 
   // ── 6. Check-in confirmed — notify CO ──────────────────────────────────────
   {
     envKey:        'WA_TMPL_CHECKIN_APPROVED',
-    friendlyName:  'afyawork_checkin_approved',
-    waName:        'afyawork_checkin_approved',
+    friendlyName:  'afyawork_checkin_approved_v2',
+    waName:        'afyawork_checkin_approved_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: Your check-in for {{1}} has been confirmed by {{2}}.\n\n' +
-      'Your shift is now in progress. Remember to check out when you are done:\n{{3}}',
+      'Your shift is now in progress. Remember to check out when you are done.',
     sampleVars: {
       '1': 'Day (8AM-4PM) · 12 Jun 2026',
       '2': 'Muhimbili National Hospital',
-      '3': 'https://afyawork.netlify.app/co/applications',
     },
   },
 
   // ── 7. Check-in disputed — notify admin ────────────────────────────────────
   {
     envKey:        'WA_TMPL_CHECKIN_DISPUTED',
-    friendlyName:  'afyawork_checkin_disputed',
-    waName:        'afyawork_checkin_disputed',
+    friendlyName:  'afyawork_checkin_disputed_v2',
+    waName:        'afyawork_checkin_disputed_v2',
     category:      'UTILITY',
     body:
       'AfyaWork alert: A check-in dispute has been raised.\n\n' +
@@ -157,7 +153,7 @@ const TEMPLATES = [
       'Facility: {{2}}\n' +
       'Clinical Officer: {{3}}\n' +
       'Reason: {{4}}\n\n' +
-      'Please review in the admin dashboard.',
+      'Please review in the AfyaWork admin dashboard.',
     sampleVars: {
       '1': 'Day (8AM-4PM) · 12 Jun 2026',
       '2': 'Muhimbili National Hospital',
@@ -169,43 +165,41 @@ const TEMPLATES = [
   // ── 8. CO checked out — notify facility ────────────────────────────────────
   {
     envKey:        'WA_TMPL_CO_CHECKED_OUT',
-    friendlyName:  'afyawork_co_checked_out',
-    waName:        'afyawork_co_checked_out',
+    friendlyName:  'afyawork_co_checked_out_v2',
+    waName:        'afyawork_co_checked_out_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: {{1}} has checked out for {{2}} at {{3}}.\n\n' +
-      'Please confirm to mark the shift complete and process payment:\n{{4}}',
+      'Please open the AfyaWork app to confirm and mark the shift complete.',
     sampleVars: {
       '1': 'Dr. Amina Said',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
       '3': '4:02 PM',
-      '4': 'https://afyawork.netlify.app/facility/shifts/abc123',
     },
   },
 
   // ── 9. Checkout confirmed — notify CO ──────────────────────────────────────
   {
     envKey:        'WA_TMPL_CHECKOUT_APPROVED',
-    friendlyName:  'afyawork_checkout_approved',
-    waName:        'afyawork_checkout_approved',
+    friendlyName:  'afyawork_checkout_approved_v2',
+    waName:        'afyawork_checkout_approved_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: Your shift is complete! {{1}} has confirmed your checkout for {{2}}.\n\n' +
       'Your payment of {{3}} has been queued for admin approval.\n\n' +
-      'View payment details:\n{{4}}',
+      'Open the AfyaWork app to view your payment status.',
     sampleVars: {
       '1': 'Muhimbili National Hospital',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
       '3': 'TZS 80,000',
-      '4': 'https://afyawork.netlify.app/co/payments',
     },
   },
 
   // ── 10. Checkout disputed — notify admin ───────────────────────────────────
   {
     envKey:        'WA_TMPL_CHECKOUT_DISPUTED',
-    friendlyName:  'afyawork_checkout_disputed',
-    waName:        'afyawork_checkout_disputed',
+    friendlyName:  'afyawork_checkout_disputed_v2',
+    waName:        'afyawork_checkout_disputed_v2',
     category:      'UTILITY',
     body:
       'AfyaWork alert: A checkout dispute has been raised.\n\n' +
@@ -213,7 +207,7 @@ const TEMPLATES = [
       'Facility: {{2}}\n' +
       'Clinical Officer: {{3}}\n' +
       'Reason: {{4}}\n\n' +
-      'Please review in the admin dashboard.',
+      'Please review in the AfyaWork admin dashboard.',
     sampleVars: {
       '1': 'Day (8AM-4PM) · 12 Jun 2026',
       '2': 'Muhimbili National Hospital',
@@ -225,27 +219,26 @@ const TEMPLATES = [
   // ── 11. Dispute resolved — notify CO ───────────────────────────────────────
   {
     envKey:        'WA_TMPL_DISPUTE_RESOLVED',
-    friendlyName:  'afyawork_dispute_resolved',
-    waName:        'afyawork_dispute_resolved',
+    friendlyName:  'afyawork_dispute_resolved_v2',
+    waName:        'afyawork_dispute_resolved_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: The dispute for your shift {{1}} has been resolved.\n\n' +
       'Outcome: {{2}}\n' +
       'Note: {{3}}\n\n' +
-      'View details:\n{{4}}',
+      'Open the AfyaWork app to view details.',
     sampleVars: {
       '1': 'Day (8AM-4PM) · 12 Jun 2026',
       '2': 'Resolved in your favour',
       '3': 'Facility confirmed CO was present',
-      '4': 'https://afyawork.netlify.app/co/applications',
     },
   },
 
   // ── 12. Payment sent — notify CO ───────────────────────────────────────────
   {
     envKey:        'WA_TMPL_PAYMENT_DISBURSED',
-    friendlyName:  'afyawork_payment_disbursed',
-    waName:        'afyawork_payment_disbursed',
+    friendlyName:  'afyawork_payment_disbursed_v2',
+    waName:        'afyawork_payment_disbursed_v2',
     category:      'UTILITY',
     body:
       'AfyaWork: Your payment has been sent!\n\n' +
@@ -253,30 +246,29 @@ const TEMPLATES = [
       'Shift: {{2}}\n' +
       'Sent to: {{3}} ending in {{4}}\n' +
       'Reference: {{5}}\n\n' +
-      'View payment history:\n{{6}}',
+      'Open the AfyaWork app to view your payment history.',
     sampleVars: {
       '1': 'TZS 80,000',
       '2': 'Day (8AM-4PM) · 12 Jun 2026',
       '3': 'M-Pesa',
       '4': '4321',
       '5': 'MPesa-ABC123',
-      '6': 'https://afyawork.netlify.app/co/payments',
     },
   },
 
-  // ── 13. Payment failed — notify admin ──────────────────────────────────────
+  // ── 13. Payment failed — admin alert ───────────────────────────────────────
   {
     envKey:        'WA_TMPL_PAYMENT_FAILED',
-    friendlyName:  'afyawork_payment_failed',
-    waName:        'afyawork_payment_failed',
+    friendlyName:  'afyawork_payment_failed_v2',
+    waName:        'afyawork_payment_failed_v2',
     category:      'UTILITY',
     body:
-      'AfyaWork alert: A payment has failed.\n\n' +
+      'AfyaWork alert: A payment could not be processed.\n\n' +
       'Amount: {{1}}\n' +
       'Clinical Officer: {{2}}\n' +
       'Shift: {{3}}\n' +
       'Reason: {{4}}\n\n' +
-      'Please review in the admin dashboard.',
+      'Please review in the AfyaWork admin dashboard.',
     sampleVars: {
       '1': 'TZS 80,000',
       '2': 'Dr. Amina Said',
@@ -301,17 +293,15 @@ async function apiRequest(url: string, payload: unknown): Promise<Record<string,
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-console.log(`\nCreating ${TEMPLATES.length} AfyaWork WhatsApp templates in Twilio...\n`);
-console.log('Account SID:', ACCOUNT_SID.slice(0, 8) + '...\n');
+console.log(`\nCreating ${TEMPLATES.length} AfyaWork WhatsApp templates (v2 — no URL variables)...\n`);
 
 const results: { envKey: string; sid: string; status: string }[] = [];
+const enc = new TextEncoder();
 
 for (const tmpl of TEMPLATES) {
-  const enc = new TextEncoder();
   Deno.stdout.write(enc.encode(`  Creating "${tmpl.friendlyName}"... `));
 
   try {
-    // Step 1 — Create content in Twilio's Content Library
     const content = await apiRequest(`${BASE}/Content`, {
       friendly_name: tmpl.friendlyName,
       language:      'en',
@@ -322,7 +312,6 @@ for (const tmpl of TEMPLATES) {
     const contentSid = content.sid as string;
     console.log(`created (${contentSid})`);
 
-    // Step 2 — Submit for WhatsApp approval
     Deno.stdout.write(enc.encode(`    Submitting for WhatsApp approval... `));
     await apiRequest(`${BASE}/Content/${contentSid}/ApprovalRequests/whatsapp`, {
       name:     tmpl.waName,
@@ -331,15 +320,12 @@ for (const tmpl of TEMPLATES) {
     console.log('submitted ✓');
 
     results.push({ envKey: tmpl.envKey, sid: contentSid, status: 'submitted' });
-
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.log(`FAILED — ${msg}`);
     results.push({ envKey: tmpl.envKey, sid: 'ERROR', status: msg });
   }
 }
-
-// ── Print summary ─────────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(70));
 console.log('RESULTS — Add these as Supabase Edge Function Secrets');
@@ -354,5 +340,5 @@ for (const r of results) {
   }
 }
 
-console.log('\nApproval timeline: WhatsApp/Meta typically reviews templates within 1–48 hours.');
-console.log('Check status: Twilio Console → Messaging → Content Template Builder\n');
+console.log('\nApproval timeline: 1–48 hours. Check status in Twilio → Content Template Builder.');
+console.log('Templates without URL variables are much more likely to get business-initiated approval.\n');

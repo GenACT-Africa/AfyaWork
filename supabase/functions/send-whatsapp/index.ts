@@ -236,7 +236,6 @@ async function onShiftOffer(ctx: ShiftContext) {
       '2': ctx.shift_label,
       '3': ctx.pay_label,
       '4': ctx.facility_name,
-      '5': `${APP_URL}/co/applications`,
     });
   } else {
     await send(ctx.co_phone, [
@@ -261,7 +260,6 @@ async function onOfferAccepted(ctx: ShiftContext) {
     await sendTemplate(ctx.facility_phone, TMPL_OFFER_ACCEPTED, {
       '1': ctx.co_name,
       '2': ctx.shift_label,
-      '3': `${APP_URL}/facility/shifts/${ctx.shift.id}`,
     });
   } else {
     await send(ctx.facility_phone, [
@@ -285,7 +283,6 @@ async function onOfferDeclined(ctx: ShiftContext) {
     await sendTemplate(ctx.facility_phone, TMPL_OFFER_DECLINED, {
       '1': ctx.co_name,
       '2': ctx.shift_label,
-      '3': `${APP_URL}/facility/shifts/${ctx.shift.id}`,
     });
   } else {
     await send(ctx.facility_phone, [
@@ -312,7 +309,6 @@ async function onCOCheckedIn(ctx: ShiftContext) {
       '1': ctx.co_name,
       '2': ctx.shift_label,
       '3': checkinTime,
-      '4': `${APP_URL}/facility/shifts/${ctx.shift.id}`,
     });
   } else {
     await send(ctx.facility_phone, [
@@ -334,7 +330,6 @@ async function onCheckinApproved(ctx: ShiftContext) {
     await sendTemplate(ctx.co_phone, TMPL_CHECKIN_APPROVED, {
       '1': ctx.shift_label,
       '2': ctx.facility_name,
-      '3': `${APP_URL}/co/applications`,
     });
   } else {
     await send(ctx.co_phone, [
@@ -387,7 +382,6 @@ async function onCOCheckedOut(ctx: ShiftContext) {
       '1': ctx.co_name,
       '2': ctx.shift_label,
       '3': checkoutTime,
-      '4': `${APP_URL}/facility/shifts/${ctx.shift.id}`,
     });
   } else {
     await send(ctx.facility_phone, [
@@ -410,7 +404,6 @@ async function onCheckoutApproved(ctx: ShiftContext) {
       '1': ctx.facility_name,
       '2': ctx.shift_label,
       '3': ctx.pay_label,
-      '4': `${APP_URL}/co/payments`,
     });
   } else {
     await send(ctx.co_phone, [
@@ -465,7 +458,6 @@ async function onDisputeResolved(ctx: ShiftContext, body: Record<string, unknown
       '1': ctx.shift_label,
       '2': outcome,
       '3': noteText,
-      '4': `${APP_URL}/co/applications`,
     });
   } else {
     await send(ctx.co_phone, [
@@ -522,7 +514,6 @@ async function onPaymentDisbursed(body: Record<string, unknown>) {
       '3': provider,
       '4': last4,
       '5': reference,
-      '6': `${APP_URL}/co/payments`,
     });
   } else {
     await send(coRes.data.phone, [
