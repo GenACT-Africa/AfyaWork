@@ -946,7 +946,7 @@ export async function adminRetryPayment(paymentId) {
   return { error };
 }
 
-/** Admin approves a single pending payment → 'scheduled' */
+/** Admin approves a single pending payment → 'scheduled' (reviewed, will pay) */
 export async function adminApprovePayment(paymentId) {
   const { error } = await supabase
     .from('shift_payments')
@@ -971,8 +971,23 @@ export async function adminApproveAllPending() {
   return { error, count };
 }
 
-export async function adminTriggerDisbursement() {
-  return supabase.functions.invoke('process-disbursement-batch', { body: {} });
+/**
+ * Admin records that a CO has been paid outside the platform.
+ * @param {string} paymentId
+ * @param {{ reference?: string, method?: string, notes?: string }} details
+ */
+export async function adminMarkPaymentPaid(paymentId, { reference = '', method = '', notes = '' } = {}) {
+  const { error } = await supabase
+    .from('shift_payments')
+    .update({
+      payment_status:              'disbursed',
+      disbursed_at:                new Date().toISOString(),
+      selcom_transaction_ref:      reference || null,  // reused as payment reference
+      selcom_response_description: [method, notes].filter(Boolean).join(' — ') || null,
+    })
+    .eq('id', paymentId)
+    .in('payment_status', ['scheduled', 'pending']);
+  return { error };
 }
 
 // ── Admin: Invoices ───────────────────────────────────────────────

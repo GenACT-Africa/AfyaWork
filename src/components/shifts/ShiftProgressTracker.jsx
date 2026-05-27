@@ -35,8 +35,8 @@ import { Button } from '../common/Button';
 
 const PAYMENT_STATUS_DISPLAY = {
   pending:    { label: 'Awaiting approval',    cls: 'bg-amber-100 text-amber-700',  desc: 'Admin will review and approve this payment.' },
-  scheduled:  { label: 'Approved — scheduled', cls: 'bg-blue-100 text-blue-700',   desc: 'Approved by admin. Queued for disbursement.' },
-  processing: { label: 'Processing',           cls: 'bg-indigo-100 text-indigo-700', desc: 'Transfer is in progress.' },
+  scheduled:  { label: 'Approved — will be paid', cls: 'bg-blue-100 text-blue-700',   desc: 'Payment approved by admin.' },
+  processing: { label: 'Processing',              cls: 'bg-indigo-100 text-indigo-700', desc: 'Transfer is in progress.' },
   disbursed:  { label: 'Paid ✓',              cls: 'bg-emerald-100 text-emerald-700', desc: null },
   failed:     { label: 'Failed',               cls: 'bg-red-100 text-red-700',       desc: null },
   held:       { label: 'On Hold',              cls: 'bg-amber-100 text-amber-700',   desc: 'Admin is reviewing this payment.' },

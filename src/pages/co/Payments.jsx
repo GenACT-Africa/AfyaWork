@@ -22,7 +22,7 @@ const PROVIDER_LABELS = {
 
 const STATUS_CONFIG = {
   pending:    { label: 'Pending',     cls: 'bg-gray-100 text-gray-600' },
-  scheduled:  { label: 'Scheduled',   cls: 'bg-blue-100 text-blue-700' },
+  scheduled:  { label: 'Approved',    cls: 'bg-blue-100 text-blue-700' },
   processing: { label: 'Processing',  cls: 'bg-indigo-100 text-indigo-700' },
   disbursed:  { label: 'Paid',        cls: 'bg-emerald-100 text-emerald-700' },
   failed:     { label: 'Failed',      cls: 'bg-red-100 text-red-700' },
@@ -80,7 +80,7 @@ function PaymentRow({ payment }) {
             </p>
           )}
           {payment.payment_status === 'scheduled' && (
-            <p className="text-xs text-blue-500 mt-0.5">Scheduled for tonight's payment batch</p>
+            <p className="text-xs text-blue-500 mt-0.5">Approved by admin — payment coming soon</p>
           )}
         </div>
       </div>

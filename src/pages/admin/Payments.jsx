@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Wallet, RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle,
-  TrendingUp, Building2, Users, Zap, Settings, FileText, ChevronDown,
-  ChevronUp, Send, DollarSign, Play, RotateCcw, X, Save, Activity,
-  Calendar,
+  Wallet, RefreshCw, CheckCircle2, Clock, AlertTriangle,
+  TrendingUp, Settings, FileText, ChevronDown,
+  ChevronUp, Send, DollarSign, RotateCcw, X, Save,
 } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Button } from '../../components/common/Button';
@@ -12,10 +11,10 @@ import { useToast } from '../../components/common/Toast';
 import {
   getAdminPaymentOverview, getAdminPayments, getAdminInvoices,
   getSystemConfig, updateSystemConfig,
-  adminRetryPayment, adminTriggerDisbursement, adminTriggerInvoiceGeneration,
+  adminRetryPayment, adminTriggerInvoiceGeneration,
   adminMarkInvoicePaid, adminMarkInvoiceSent, adminMarkInvoiceOverdue,
   getInvoiceLineItems,
-  adminApprovePayment, adminApproveAllPending,
+  adminApprovePayment, adminApproveAllPending, adminMarkPaymentPaid,
 } from '../../lib/api';
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -68,92 +67,147 @@ function SectionHeader({ children, count }) {
 
 // ── Tab: Disbursements ────────────────────────────────────────────
 
+const PAYMENT_METHODS = [
+  { value: 'mpesa',        label: 'M-Pesa' },
+  { value: 'mixx_by_yas',  label: 'Mixx by Yas' },
+  { value: 'airtel_money', label: 'Airtel Money' },
+  { value: 'halopesa',     label: 'Halopesa' },
+  { value: 'bank',         label: 'Bank Transfer' },
+  { value: 'cash',         label: 'Cash' },
+  { value: 'other',        label: 'Other' },
+];
+
+function PaymentRow({ p, actionSlot }) {
+  return (
+    <tr className="hover:bg-gray-50/60 transition-colors">
+      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{p.co?.display_name ?? '—'}</td>
+      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.facility?.facility_name ?? '—'}</td>
+      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{p.shift?.shift_date ?? '—'}</td>
+      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{p.shift?.shift_type ?? '—'}</td>
+      <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {p.mobile_money_provider ? (
+          <span className="text-xs text-gray-600">
+            {PROVIDER_LABELS[p.mobile_money_provider]} ···{p.mobile_money_number?.slice(-4)}
+          </span>
+        ) : (
+          <span className="text-xs text-red-500 font-medium">⚠ No details</span>
+        )}
+      </td>
+      <td className="px-4 py-3">{actionSlot}</td>
+    </tr>
+  );
+}
+
+function PaymentTable({ payments, accent = 'gray', children }) {
+  return (
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-x-auto ${
+      accent === 'amber' ? 'border-amber-100' :
+      accent === 'blue'  ? 'border-blue-100'  : 'border-gray-100'
+    }`}>
+      <table className="w-full text-sm min-w-[700px]">
+        <thead className={`border-b ${
+          accent === 'amber' ? 'bg-amber-50 border-amber-100' :
+          accent === 'blue'  ? 'bg-blue-50  border-blue-100'  : 'bg-gray-50 border-gray-100'
+        }`}>
+          <tr>
+            {['CO', 'Facility', 'Shift Date', 'Shift Type', 'Amount', 'Payment Details', ''].map((h) => (
+              <th key={h} className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap ${
+                accent === 'amber' ? 'text-amber-700' :
+                accent === 'blue'  ? 'text-blue-700'  : 'text-gray-400'
+              }`}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">{children}</tbody>
+        <tfoot className={`border-t ${
+          accent === 'amber' ? 'bg-amber-50/50 border-amber-100' :
+          accent === 'blue'  ? 'bg-blue-50/50  border-blue-100'  : 'bg-gray-50 border-gray-100'
+        }`}>
+          <tr>
+            <td colSpan={4} className="px-4 py-3 text-xs font-semibold text-gray-500 text-right">Total</td>
+            <td className="px-4 py-3 font-bold text-gray-900">
+              TZS {fmt(payments.reduce((s, p) => s + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0))}
+            </td>
+            <td colSpan={2} />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 function DisbursementsTab() {
   const { show, ToastComponent } = useToast();
-  const [overview,    setOverview]    = useState({ stats: {}, recentBatches: [] });
-  const [pending,     setPending]     = useState([]);
-  const [failed,      setFailed]      = useState([]);
-  const [held,        setHeld]        = useState([]);
-  const [processing,  setProcessing]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [running,     setRunning]     = useState(false);
-  const [retrying,    setRetrying]    = useState(null);
-  const [approving,   setApproving]   = useState(null); // paymentId | 'all'
-  const [selected,    setSelected]    = useState(new Set());
+  const [overview,   setOverview]  = useState({ stats: {} });
+  const [pending,    setPending]   = useState([]);
+  const [scheduled,  setScheduled] = useState([]);
+  const [held,       setHeld]      = useState([]);
+  const [failed,     setFailed]    = useState([]);
+  const [recent,     setRecent]    = useState([]);
+  const [loading,    setLoading]   = useState(true);
+  const [approving,  setApproving] = useState(null);
+  const [markPaidId, setMarkPaidId] = useState(null);
+  const [marking,    setMarking]   = useState(false);
+  const [paidForm,   setPaidForm]  = useState({ method: 'mpesa', reference: '', notes: '' });
 
   async function load() {
     setLoading(true);
-    const [overviewData, { data: pendingData }, { data: failedData }, { data: heldData }, { data: processingData }] =
-      await Promise.all([
-        getAdminPaymentOverview(),
-        getAdminPayments({ status: 'pending' }),
-        getAdminPayments({ status: 'failed' }),
-        getAdminPayments({ status: 'held' }),
-        getAdminPayments({ status: 'processing' }),
-      ]);
+    const [
+      overviewData,
+      { data: pendingData },
+      { data: scheduledData },
+      { data: heldData },
+      { data: failedData },
+      { data: recentData },
+    ] = await Promise.all([
+      getAdminPaymentOverview(),
+      getAdminPayments({ status: 'pending' }),
+      getAdminPayments({ status: 'scheduled' }),
+      getAdminPayments({ status: 'held' }),
+      getAdminPayments({ status: 'failed' }),
+      getAdminPayments({ status: 'disbursed' }),
+    ]);
     setOverview(overviewData);
-    setPending(pendingData  || []);
-    setFailed(failedData    || []);
-    setHeld(heldData        || []);
-    setProcessing(processingData || []);
-    setSelected(new Set());
+    setPending(pendingData   || []);
+    setScheduled(scheduledData || []);
+    setHeld(heldData         || []);
+    setFailed(failedData     || []);
+    setRecent((recentData    || []).slice(0, 20));
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []);
 
-  async function handleRunBatch() {
-    setRunning(true);
-    const { error } = await adminTriggerDisbursement();
-    setRunning(false);
-    if (error) { show('Batch failed: ' + error.message, 'error'); return; }
-    show('Disbursement batch started — refresh in a moment to see results.');
-    load();
-  }
-
-  async function handleRetry(paymentId) {
-    setRetrying(paymentId);
-    const { error } = await adminRetryPayment(paymentId);
-    setRetrying(null);
-    if (error) { show('Retry failed: ' + error.message, 'error'); return; }
-    show('Payment re-scheduled.');
-    load();
-  }
-
   async function handleApprove(paymentId) {
     setApproving(paymentId);
     const { error } = await adminApprovePayment(paymentId);
     setApproving(null);
-    if (error) { show('Approval failed: ' + error.message, 'error'); return; }
-    show('Payment approved — will be included in next batch.');
-    load();
-  }
-
-  async function handleApproveSelected() {
-    if (selected.size === 0) return;
-    setApproving('selected');
-    await Promise.all([...selected].map((id) => adminApprovePayment(id)));
-    setApproving(null);
-    show(`${selected.size} payment${selected.size > 1 ? 's' : ''} approved.`);
+    if (error) { show('Failed: ' + error.message, 'error'); return; }
+    show('Approved — moved to "To Pay" queue.');
     load();
   }
 
   async function handleApproveAll() {
-    if (!window.confirm(`Approve all ${pending.length} pending payment${pending.length > 1 ? 's' : ''}?`)) return;
+    if (!window.confirm(`Approve all ${pending.length} pending payment${pending.length !== 1 ? 's' : ''}?`)) return;
     setApproving('all');
     const { error } = await adminApproveAllPending();
     setApproving(null);
     if (error) { show('Bulk approval failed: ' + error.message, 'error'); return; }
-    show(`All ${pending.length} payments approved — ready for disbursement.`);
+    show(`${pending.length} payment${pending.length !== 1 ? 's' : ''} approved.`);
     load();
   }
 
-  function toggleSelect(id) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  async function handleMarkPaid() {
+    if (!markPaidId) return;
+    setMarking(true);
+    const { error } = await adminMarkPaymentPaid(markPaidId, paidForm);
+    setMarking(false);
+    if (error) { show('Failed: ' + error.message, 'error'); return; }
+    setMarkPaidId(null);
+    setPaidForm({ method: 'mpesa', reference: '', notes: '' });
+    show('Payment recorded as paid. CO will be notified.');
+    load();
   }
 
   const s = overview.stats;
@@ -162,34 +216,25 @@ function DisbursementsTab() {
     <div className="space-y-8">
       {ToastComponent}
 
-      {/* ── Top action bar ── */}
+      {/* ── Top bar ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <p className="text-sm text-gray-500">
-            <span className="font-semibold text-amber-700">{pending.length}</span> pending approval
-            {' · '}
-            <span className="font-semibold text-blue-700">{s.scheduled_count ?? 0}</span> scheduled for disbursement
-          </p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button variant="secondary" onClick={load} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={handleRunBatch} loading={running} disabled={loading || (s.scheduled_count ?? 0) === 0}>
-            <Play className="w-4 h-4" />
-            Disburse ({s.scheduled_count ?? 0} scheduled)
-          </Button>
-        </div>
+        <p className="text-sm text-gray-500">
+          <span className="font-semibold text-amber-700">{pending.length}</span> awaiting review
+          {' · '}
+          <span className="font-semibold text-blue-700">{scheduled.length}</span> approved, ready to pay
+        </p>
+        <Button variant="secondary" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+        </Button>
       </div>
 
-      {/* ── Overview stat cards ── */}
+      {/* ── Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Disbursed (all time)', value: `TZS ${fmt(s.total_disbursed)}`,      icon: TrendingUp,   color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Disbursed this month', value: `TZS ${fmt(s.disbursed_this_month)}`,  icon: CheckCircle2, color: 'text-teal-600 bg-teal-50' },
-          { label: 'Scheduled (queued)',   value: `TZS ${fmt(s.upcoming_total)}`,        icon: Clock,        color: 'text-blue-600 bg-blue-50' },
-          { label: 'On hold (disputed)',   value: `TZS ${fmt(s.held_total)}`,            icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
+          { label: 'Total paid out',      value: `TZS ${fmt(s.total_disbursed)}`,      icon: TrendingUp,    color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Paid this month',     value: `TZS ${fmt(s.disbursed_this_month)}`,  icon: CheckCircle2,  color: 'text-teal-600 bg-teal-50' },
+          { label: 'Approved to pay',     value: `TZS ${fmt(s.upcoming_total)}`,        icon: Clock,         color: 'text-blue-600 bg-blue-50' },
+          { label: 'On hold (disputes)',  value: `TZS ${fmt(s.held_total)}`,            icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
         ].map((card) => (
           <div key={card.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${card.color.split(' ')[1]}`}>
@@ -201,186 +246,70 @@ function DisbursementsTab() {
         ))}
       </div>
 
-      {/* ── Pending approval ── */}
-      {(loading || pending.length > 0) && (
-        <div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <SectionHeader count={pending.length}>Pending Approval</SectionHeader>
-            {pending.length > 0 && (
-              <div className="flex items-center gap-2">
-                {selected.size > 0 && (
-                  <Button
-                    size="sm"
-                    loading={approving === 'selected'}
-                    onClick={handleApproveSelected}
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Approve Selected ({selected.size})
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  loading={approving === 'all'}
-                  onClick={handleApproveAll}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Approve All ({pending.length})
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}
-            </div>
-          ) : pending.length === 0 ? (
-            <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200">
-              <CheckCircle2 className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">No pending payments — all clear</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-amber-50 border-b border-amber-100">
-                  <tr>
-                    <th className="px-4 py-3 w-8">
-                      <input
-                        type="checkbox"
-                        checked={selected.size === pending.length && pending.length > 0}
-                        onChange={(e) => setSelected(e.target.checked ? new Set(pending.map((p) => p.id)) : new Set())}
-                        className="rounded border-gray-300"
-                      />
-                    </th>
-                    {['CO', 'Facility', 'Shift Date', 'Shift Type', 'Amount', 'MM Details', ''].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-amber-700 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {pending.map((p) => (
-                    <tr key={p.id} className={`hover:bg-amber-50/30 transition-colors ${selected.has(p.id) ? 'bg-amber-50/50' : ''}`}>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(p.id)}
-                          onChange={() => toggleSelect(p.id)}
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{p.co?.display_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.facility?.facility_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.shift?.shift_date ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.shift?.shift_type ?? '—'}</td>
-                      <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {p.mobile_money_provider ? (
-                          <span className="text-xs text-gray-600">
-                            {PROVIDER_LABELS[p.mobile_money_provider]} ···{p.mobile_money_number?.slice(-4)}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-red-500 font-medium">⚠ No MM details</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Button
-                          size="sm"
-                          loading={approving === p.id}
-                          disabled={!!approving && approving !== p.id}
-                          onClick={() => handleApprove(p.id)}
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-amber-50/50 border-t border-amber-100">
-                  <tr>
-                    <td colSpan={5} className="px-4 py-3 text-xs font-semibold text-amber-800 text-right">Total to approve</td>
-                    <td className="px-4 py-3 font-bold text-gray-900">
-                      TZS {fmt(pending.reduce((sum, p) => sum + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0))}
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+      {/* ── Step 1: Pending review ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <SectionHeader count={pending.length}>Step 1 — Review &amp; Approve</SectionHeader>
+          {pending.length > 1 && (
+            <Button size="sm" loading={approving === 'all'} onClick={handleApproveAll}>
+              <CheckCircle2 className="w-4 h-4" /> Approve All ({pending.length})
+            </Button>
           )}
         </div>
-      )}
-
-      {/* ── Failed payments ── */}
-      {failed.length > 0 && (
-        <div>
-          <SectionHeader count={failed.length}>Failed Transfers — Action Required</SectionHeader>
-          <div className="space-y-2">
-            {failed.map((p) => (
-              <div key={p.id} className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-5 py-4">
-                <div>
-                  <p className="font-semibold text-gray-900">{p.co?.display_name ?? '—'}</p>
-                  <p className="text-sm text-gray-500">
-                    {PROVIDER_LABELS[p.mobile_money_provider] ?? '—'} · ···{p.mobile_money_number?.slice(-4) ?? '—'}
-                  </p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    {p.selcom_response_code && <span className="font-mono mr-2">[{p.selcom_response_code}]</span>}
-                    {p.failure_reason ?? 'Unknown error'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</p>
-                    <p className="text-xs text-gray-400">{p.shift?.shift_date}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    loading={retrying === p.id}
-                    onClick={() => handleRetry(p.id)}
-                  >
-                    <RotateCcw className="w-4 h-4" /> Retry
-                  </Button>
-                </div>
-              </div>
-            ))}
+        {loading ? (
+          <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-2xl animate-pulse" />)}</div>
+        ) : pending.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200">
+            <CheckCircle2 className="w-7 h-7 text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No payments waiting for review</p>
           </div>
-        </div>
-      )}
-
-      {/* ── Processing (awaiting Selcom webhook) ── */}
-      {processing.length > 0 && (
-        <div>
-          <SectionHeader count={processing.length}>Processing — Awaiting Selcom Confirmation</SectionHeader>
-          <div className="space-y-2">
-            {processing.map((p) => (
-              <div key={p.id} className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-2xl px-5 py-4">
-                <div>
-                  <p className="font-semibold text-gray-900">{p.co?.display_name ?? '—'}</p>
-                  <p className="text-sm text-gray-500">
-                    {PROVIDER_LABELS[p.mobile_money_provider] ?? '—'} · Ref: {p.selcom_transaction_ref ?? '—'}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-gray-900">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</p>
-                  <p className="text-xs text-indigo-600 animate-pulse">Waiting for webhook…</p>
-                </div>
-              </div>
+        ) : (
+          <PaymentTable payments={pending} accent="amber">
+            {pending.map((p) => (
+              <PaymentRow key={p.id} p={p} actionSlot={
+                <Button size="sm" loading={approving === p.id} disabled={!!approving && approving !== p.id} onClick={() => handleApprove(p.id)}>
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                </Button>
+              } />
             ))}
-          </div>
-        </div>
-      )}
+          </PaymentTable>
+        )}
+      </div>
 
-      {/* ── Held payments (disputed) ── */}
+      {/* ── Step 2: Approved — ready to pay ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <SectionHeader count={scheduled.length}>Step 2 — Pay &amp; Record</SectionHeader>
+        </div>
+        <p className="text-xs text-gray-400 -mt-2 mb-3">Pay each CO outside the platform, then click "Mark Paid" to record it here.</p>
+        {!loading && scheduled.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200">
+            <Wallet className="w-7 h-7 text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No approved payments yet — approve from Step 1 first</p>
+          </div>
+        ) : !loading && (
+          <PaymentTable payments={scheduled} accent="blue">
+            {scheduled.map((p) => (
+              <PaymentRow key={p.id} p={p} actionSlot={
+                <Button size="sm" onClick={() => { setMarkPaidId(p.id); setPaidForm({ method: p.mobile_money_provider || 'mpesa', reference: '', notes: '' }); }}>
+                  <DollarSign className="w-3.5 h-3.5" /> Mark Paid
+                </Button>
+              } />
+            ))}
+          </PaymentTable>
+        )}
+      </div>
+
+      {/* ── Held (disputed) ── */}
       {held.length > 0 && (
         <div>
-          <SectionHeader count={held.length}>Held — Disputed Shifts</SectionHeader>
+          <SectionHeader count={held.length}>On Hold — Disputed Shifts</SectionHeader>
           <div className="space-y-2">
             {held.map((p) => (
-              <div key={p.id} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+              <div key={p.id} className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex-wrap gap-3">
                 <div>
                   <p className="font-semibold text-gray-900">{p.co?.display_name ?? '—'}</p>
-                  <p className="text-sm text-gray-500">
-                    {p.facility?.facility_name ?? '—'} · {p.shift?.shift_date ?? '—'}
-                  </p>
+                  <p className="text-sm text-gray-500">{p.facility?.facility_name ?? '—'} · {p.shift?.shift_date ?? '—'}</p>
                   <p className="text-xs text-amber-700 mt-0.5">{p.hold_reason?.replace(/_/g, ' ') ?? 'Dispute pending'}</p>
                 </div>
                 <div className="text-right">
@@ -393,45 +322,111 @@ function DisbursementsTab() {
         </div>
       )}
 
-      {/* ── Recent batches ── */}
-      <div>
-        <SectionHeader>Recent Disbursement Batches</SectionHeader>
-        {overview.recentBatches.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
-            <p className="text-sm text-gray-400">No batches processed yet</p>
+      {/* ── Failed ── */}
+      {failed.length > 0 && (
+        <div>
+          <SectionHeader count={failed.length}>Failed — Needs Attention</SectionHeader>
+          <div className="space-y-2">
+            {failed.map((p) => (
+              <div key={p.id} className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-5 py-4 flex-wrap gap-3">
+                <div>
+                  <p className="font-semibold text-gray-900">{p.co?.display_name ?? '—'}</p>
+                  <p className="text-sm text-gray-500">{p.facility?.facility_name ?? '—'} · {p.shift?.shift_date ?? '—'}</p>
+                  <p className="text-xs text-red-600 mt-0.5">{p.failure_reason ?? 'Unknown reason'}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="font-bold text-gray-900">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</p>
+                  <Button size="sm" onClick={() => { setMarkPaidId(p.id); setPaidForm({ method: p.mobile_money_provider || 'mpesa', reference: '', notes: '' }); }}>
+                    <DollarSign className="w-3.5 h-3.5" /> Mark Paid
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+        </div>
+      )}
+
+      {/* ── Recent paid ── */}
+      {recent.length > 0 && (
+        <div>
+          <SectionHeader>Recently Paid</SectionHeader>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {['Date', 'Status', 'COs Paid', 'Shifts', 'Total Disbursed', 'Failed'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
+                  {['CO', 'Facility', 'Shift Date', 'Amount', 'Payment Details', 'Paid On'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {overview.recentBatches.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">{batch.batch_date}</td>
-                    <td className="px-4 py-3"><StatusPill status={batch.batch_status} /></td>
-                    <td className="px-4 py-3 text-gray-600">{batch.total_cos_paid}</td>
-                    <td className="px-4 py-3 text-gray-600">{batch.total_shifts_covered}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">TZS {fmt(batch.total_amount_disbursed)}</td>
-                    <td className="px-4 py-3">
-                      {batch.total_failed_transfers > 0 ? (
-                        <span className="text-red-600 font-semibold">{batch.total_failed_transfers}</span>
-                      ) : (
-                        <span className="text-gray-400">0</span>
-                      )}
+                {recent.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{p.co?.display_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.facility?.facility_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{p.shift?.shift_date ?? '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      {p.selcom_response_description
+                        ? p.selcom_response_description
+                        : p.mobile_money_provider
+                          ? `${PROVIDER_LABELS[p.mobile_money_provider]} ···${p.mobile_money_number?.slice(-4)}`
+                          : '—'}
+                      {p.selcom_transaction_ref && <span className="ml-1 font-mono text-gray-400">· {p.selcom_transaction_ref}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {p.disbursed_at ? new Date(p.disbursed_at).toLocaleDateString('en-TZ', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ── Mark Paid modal ── */}
+      {markPaidId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Record Payment</h2>
+              <button onClick={() => setMarkPaidId(null)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-500">Record how you paid this CO outside the platform.</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                <Select value={paidForm.method} onChange={(e) => setPaidForm((f) => ({ ...f, method: e.target.value }))}>
+                  {PAYMENT_METHODS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </Select>
+              </div>
+              <Input
+                label="Transaction Reference (optional)"
+                value={paidForm.reference}
+                onChange={(e) => setPaidForm((f) => ({ ...f, reference: e.target.value }))}
+                placeholder="e.g. M-Pesa transaction ID, bank ref…"
+              />
+              <Input
+                label="Notes (optional)"
+                value={paidForm.notes}
+                onChange={(e) => setPaidForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Any notes about this payment"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
+              <Button variant="secondary" onClick={() => setMarkPaidId(null)}>Cancel</Button>
+              <Button loading={marking} onClick={handleMarkPaid}>
+                <CheckCircle2 className="w-4 h-4" /> Confirm Payment Sent
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -723,8 +718,6 @@ function ConfigTab() {
     show('Settings saved.');
   }
 
-  const isProduction = config.selcom_environment === 'production';
-
   if (loading) return <div className="h-40 bg-gray-100 rounded-2xl animate-pulse" />;
 
   return (
@@ -843,111 +836,6 @@ function ConfigTab() {
         </div>
       </div>
 
-      {/* ── Selcom Configuration ── */}
-      <div className={`rounded-2xl border shadow-sm p-6 ${isProduction ? 'border-red-300 bg-red-50' : 'bg-white border-gray-100'}`}>
-        <div className="flex items-center gap-2 mb-2">
-          <Activity className="w-5 h-5 text-gray-400" />
-          <h2 className="font-semibold text-gray-900">Selcom Disbursement</h2>
-          <span className={`ml-auto text-xs font-bold px-3 py-1 rounded-full ${
-            isProduction
-              ? 'bg-red-500 text-white animate-pulse'
-              : 'bg-gray-200 text-gray-600'
-          }`}>
-            {isProduction ? '⚠️ PRODUCTION — LIVE PAYMENTS' : 'SANDBOX'}
-          </span>
-        </div>
-
-        {isProduction && (
-          <div className="flex items-start gap-2 bg-red-100 border border-red-300 rounded-xl px-4 py-3 text-sm text-red-800 mb-4">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <p><span className="font-bold">Production mode is active.</span> Disbursement batches will trigger real money transfers. Switch to Sandbox for testing.</p>
-          </div>
-        )}
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Environment</label>
-            <Select value={config.selcom_environment ?? 'sandbox'} onChange={setField('selcom_environment')}>
-              <option value="sandbox">Sandbox (Testing)</option>
-              <option value="production">Production (Live)</option>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Disbursement Status</label>
-            <Select value={config.selcom_status ?? 'active'} onChange={setField('selcom_status')}>
-              <option value="active">Active — run normally</option>
-              <option value="paused">Paused — hold all disbursements</option>
-            </Select>
-            {config.selcom_status === 'paused' && (
-              <p className="text-xs text-amber-700 mt-1">⚠️ All disbursements are paused. Scheduled payments will accumulate until resumed.</p>
-            )}
-          </div>
-        </div>
-
-        {/* ── Mock Mode toggle ── */}
-        <div className={`mt-4 flex items-start gap-4 rounded-xl px-4 py-3 border ${
-          config.selcom_mock_mode === 'true'
-            ? 'bg-blue-50 border-blue-200'
-            : 'bg-gray-50 border-gray-200'
-        }`}>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={config.selcom_mock_mode === 'true'}
-            onClick={() => setConfig((c) => ({ ...c, selcom_mock_mode: c.selcom_mock_mode === 'true' ? 'false' : 'true' }))}
-            className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none ${
-              config.selcom_mock_mode === 'true' ? 'bg-blue-500' : 'bg-gray-300'
-            }`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-              config.selcom_mock_mode === 'true' ? 'translate-x-[18px]' : 'translate-x-0.5'
-            }`} />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              Mock Mode
-              {config.selcom_mock_mode === 'true' && (
-                <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ON — no real payments</span>
-              )}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              When enabled, disbursement batches complete instantly with <code className="text-xs bg-gray-100 px-1 rounded">MOCK-*</code> references — no real Selcom API calls.
-              {config.selcom_mock_mode !== 'true' && !isProduction && (
-                <> Also auto-activates when <code className="text-xs bg-gray-100 px-1 rounded">SELCOM_API_KEY</code> secret is not set.</>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <Button
-            size="sm"
-            variant={isProduction ? 'danger' : 'primary'}
-            loading={saving === 'selcom'}
-            onClick={async () => {
-              if (config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true') {
-                if (!confirm('⚠️ You are switching to PRODUCTION with Mock Mode OFF. Real money will be transferred. Are you sure?')) return;
-              }
-              setSaving('selcom');
-              await Promise.all([
-                updateSystemConfig('selcom_environment', config.selcom_environment),
-                updateSystemConfig('selcom_status',      config.selcom_status),
-                updateSystemConfig('selcom_mock_mode',   config.selcom_mock_mode ?? 'true'),
-              ]);
-              setSaving(null);
-              show(config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true'
-                ? '⚠️ Switched to PRODUCTION — live payments enabled'
-                : 'Saved — ' + (config.selcom_mock_mode === 'true' ? 'mock mode active' : 'sandbox mode active'),
-                config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true' ? 'error' : 'success');
-            }}
-          >
-            <Save className="w-4 h-4" /> Save Selcom Settings
-          </Button>
-          <p className="text-xs text-gray-400">
-            API Key and Secret are configured as Supabase Edge Function Secrets (not stored in the database).
-          </p>
-        </div>
-      </div>
     </div>
   );
 }
