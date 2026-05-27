@@ -24,7 +24,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // Never hardcode credentials here — GitHub will block the push.
 const TWILIO_SID   = Deno.env.get('TWILIO_ACCOUNT_SID')!;
 const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')!;
-const TWILIO_FROM  = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? 'whatsapp:+14155238886';
+const TWILIO_FROM  = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? 'whatsapp:+255742770669';
 const APP_URL      = Deno.env.get('APP_URL') ?? 'https://afyawork.netlify.app';
 const ADMIN_PHONE  = Deno.env.get('ADMIN_PHONE') ?? '+255712168011';
 
