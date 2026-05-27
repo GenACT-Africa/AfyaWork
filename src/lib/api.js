@@ -323,6 +323,7 @@ export async function approveCheckout(shiftId) {
             .select('mobile_money_provider, mobile_money_number')
             .eq('co_id', s.assigned_co_id)
             .maybeSingle();
+          // Always 'pending' — admin approves to 'scheduled' from the dashboard
           await supabase.from('shift_payments').upsert({
             shift_id:              shiftId,
             co_id:                 s.assigned_co_id,
@@ -334,7 +335,7 @@ export async function approveCheckout(shiftId) {
             platform_fee:          0,
             mobile_money_provider: mm?.mobile_money_provider ?? null,
             mobile_money_number:   mm?.mobile_money_number   ?? null,
-            payment_status:        mm ? 'scheduled' : 'pending',
+            payment_status:        'pending',
           }, { onConflict: 'shift_id', ignoreDuplicates: true });
         }
       }
@@ -930,18 +931,44 @@ export async function getAdminPayments(filters = {}) {
 }
 
 export async function adminRetryPayment(paymentId) {
-  // Reset to scheduled so the next batch picks it up
+  // Reset failed payment back to scheduled so the next batch picks it up
   const { error } = await supabase
     .from('shift_payments')
     .update({
       payment_status: 'scheduled',
       failure_reason: null,
       failure_logged_at: null,
+      scheduled_at: new Date().toISOString(),
     })
     .eq('id', paymentId)
     .eq('payment_status', 'failed');
 
   return { error };
+}
+
+/** Admin approves a single pending payment → 'scheduled' */
+export async function adminApprovePayment(paymentId) {
+  const { error } = await supabase
+    .from('shift_payments')
+    .update({
+      payment_status: 'scheduled',
+      scheduled_at:   new Date().toISOString(),
+    })
+    .eq('id', paymentId)
+    .eq('payment_status', 'pending');
+  return { error };
+}
+
+/** Admin approves ALL pending payments in bulk → 'scheduled' */
+export async function adminApproveAllPending() {
+  const { error, count } = await supabase
+    .from('shift_payments')
+    .update({
+      payment_status: 'scheduled',
+      scheduled_at:   new Date().toISOString(),
+    })
+    .eq('payment_status', 'pending');
+  return { error, count };
 }
 
 export async function adminTriggerDisbursement() {

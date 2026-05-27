@@ -6,10 +6,10 @@
  * 2. Reads system config for platform_fee_per_shift and overtime rate.
  * 3. Calculates overtime (if approved hours exceed scheduled by ≥60 min).
  * 4. Creates (or upserts) a shift_payments record.
- * 5. Sets payment_status to 'scheduled' immediately — the nightly batch
- *    processor will pick it up.
- *    • scheduled_at = tonight 18:00 UTC (9pm EAT) if shift completed before
- *      17:00 UTC (8pm EAT cutoff); otherwise tomorrow night 18:00 UTC.
+ * 5. Sets payment_status to 'pending' — an admin must approve it to
+ *    'scheduled' from the Payments dashboard before the batch can pick it up.
+ *    The flat rate is always charged in full regardless of how long the CO
+ *    actually worked (checking out early does not reduce the flat rate).
  *
  * Required env vars (auto-injected by Supabase):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -36,23 +36,6 @@ const SHIFT_DURATION_MINUTES: Record<string, number> = {
   '24-Hour':            1440,
   'Weekend':             480,
 };
-
-// EAT = UTC+3. Cutoff = 8pm EAT = 17:00 UTC. Batch = 9pm EAT = 18:00 UTC.
-const CUTOFF_UTC_HOUR  = 17; // 8pm EAT
-const BATCH_UTC_HOUR   = 18; // 9pm EAT
-
-function getScheduledAt(now: Date): Date {
-  const cutoff = new Date(now);
-  cutoff.setUTCHours(CUTOFF_UTC_HOUR, 0, 0, 0);
-
-  const batchToday = new Date(now);
-  batchToday.setUTCHours(BATCH_UTC_HOUR, 0, 0, 0);
-
-  const batchTomorrow = new Date(batchToday);
-  batchTomorrow.setUTCDate(batchTomorrow.getUTCDate() + 1);
-
-  return now < cutoff ? batchToday : batchTomorrow;
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -142,11 +125,9 @@ serve(async (req) => {
       .eq('co_id', coId)
       .maybeSingle();
 
-    // ── 6. Determine scheduled_at ─────────────────────────────────
-    const now = new Date();
-    const scheduledAt = getScheduledAt(now);
-
-    // ── 7. Create payment record ──────────────────────────────────
+    // ── 6. Create payment record ──────────────────────────────────
+    // Payment always starts as 'pending' — admin approves to 'scheduled'
+    // from the Admin Payments dashboard before the batch picks it up.
     const paymentRecord = {
       shift_id:                         shift_id,
       co_id:                            coId,
@@ -161,10 +142,10 @@ serve(async (req) => {
       platform_fee:                     platformFee,
       facility_total_charge:            facilityTotalCharge,
       tax_withheld_amount:              0,
-      payment_status:                   mmProfile ? 'scheduled' : 'pending',
+      payment_status:                   'pending',   // admin must approve → 'scheduled'
       mobile_money_provider:            mmProfile?.mobile_money_provider ?? null,
       mobile_money_number:              mmProfile?.mobile_money_number ?? null,
-      scheduled_at:                     mmProfile ? scheduledAt.toISOString() : null,
+      scheduled_at:                     null,        // set by admin on approval
     };
 
     const { error: insertErr } = await db
@@ -195,7 +176,7 @@ serve(async (req) => {
       co_total_pay:  coTotalPay,
       overtime_pay:  overtimePay,
       platform_fee:  platformFee,
-      scheduled_at:  mmProfile ? scheduledAt.toISOString() : null,
+      status:        'pending',
     }), {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     });

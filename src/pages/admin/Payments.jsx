@@ -15,6 +15,7 @@ import {
   adminRetryPayment, adminTriggerDisbursement, adminTriggerInvoiceGeneration,
   adminMarkInvoicePaid, adminMarkInvoiceSent, adminMarkInvoiceOverdue,
   getInvoiceLineItems,
+  adminApprovePayment, adminApproveAllPending,
 } from '../../lib/api';
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -69,27 +70,33 @@ function SectionHeader({ children, count }) {
 
 function DisbursementsTab() {
   const { show, ToastComponent } = useToast();
-  const [overview, setOverview]     = useState({ stats: {}, recentBatches: [] });
-  const [failed,   setFailed]       = useState([]);
-  const [held,     setHeld]         = useState([]);
-  const [processing, setProcessing] = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [running,  setRunning]      = useState(false);
-  const [retrying, setRetrying]     = useState(null);
+  const [overview,    setOverview]    = useState({ stats: {}, recentBatches: [] });
+  const [pending,     setPending]     = useState([]);
+  const [failed,      setFailed]      = useState([]);
+  const [held,        setHeld]        = useState([]);
+  const [processing,  setProcessing]  = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [running,     setRunning]     = useState(false);
+  const [retrying,    setRetrying]    = useState(null);
+  const [approving,   setApproving]   = useState(null); // paymentId | 'all'
+  const [selected,    setSelected]    = useState(new Set());
 
   async function load() {
     setLoading(true);
-    const [overviewData, { data: failedData }, { data: heldData }, { data: processingData }] =
+    const [overviewData, { data: pendingData }, { data: failedData }, { data: heldData }, { data: processingData }] =
       await Promise.all([
         getAdminPaymentOverview(),
+        getAdminPayments({ status: 'pending' }),
         getAdminPayments({ status: 'failed' }),
         getAdminPayments({ status: 'held' }),
         getAdminPayments({ status: 'processing' }),
       ]);
     setOverview(overviewData);
-    setFailed(failedData   || []);
-    setHeld(heldData       || []);
+    setPending(pendingData  || []);
+    setFailed(failedData    || []);
+    setHeld(heldData        || []);
     setProcessing(processingData || []);
+    setSelected(new Set());
     setLoading(false);
   }
 
@@ -109,8 +116,44 @@ function DisbursementsTab() {
     const { error } = await adminRetryPayment(paymentId);
     setRetrying(null);
     if (error) { show('Retry failed: ' + error.message, 'error'); return; }
-    show('Payment rescheduled for next batch.');
+    show('Payment re-scheduled.');
     load();
+  }
+
+  async function handleApprove(paymentId) {
+    setApproving(paymentId);
+    const { error } = await adminApprovePayment(paymentId);
+    setApproving(null);
+    if (error) { show('Approval failed: ' + error.message, 'error'); return; }
+    show('Payment approved — will be included in next batch.');
+    load();
+  }
+
+  async function handleApproveSelected() {
+    if (selected.size === 0) return;
+    setApproving('selected');
+    await Promise.all([...selected].map((id) => adminApprovePayment(id)));
+    setApproving(null);
+    show(`${selected.size} payment${selected.size > 1 ? 's' : ''} approved.`);
+    load();
+  }
+
+  async function handleApproveAll() {
+    if (!window.confirm(`Approve all ${pending.length} pending payment${pending.length > 1 ? 's' : ''}?`)) return;
+    setApproving('all');
+    const { error } = await adminApproveAllPending();
+    setApproving(null);
+    if (error) { show('Bulk approval failed: ' + error.message, 'error'); return; }
+    show(`All ${pending.length} payments approved — ready for disbursement.`);
+    load();
+  }
+
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
   const s = overview.stats;
@@ -120,18 +163,22 @@ function DisbursementsTab() {
       {ToastComponent}
 
       {/* ── Top action bar ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <p className="text-sm text-gray-500">Process all <span className="font-semibold text-gray-800">{s.scheduled_count ?? 0}</span> scheduled payments</p>
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-amber-700">{pending.length}</span> pending approval
+            {' · '}
+            <span className="font-semibold text-blue-700">{s.scheduled_count ?? 0}</span> scheduled for disbursement
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button variant="secondary" onClick={load} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <Button onClick={handleRunBatch} loading={running} disabled={loading || (s.scheduled_count ?? 0) === 0}>
             <Play className="w-4 h-4" />
-            Run Nightly Batch
+            Disburse ({s.scheduled_count ?? 0} scheduled)
           </Button>
         </div>
       </div>
@@ -139,10 +186,10 @@ function DisbursementsTab() {
       {/* ── Overview stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Disbursed (all time)', value: `TZS ${fmt(s.total_disbursed)}`,    icon: TrendingUp,   color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Disbursed this month', value: `TZS ${fmt(s.disbursed_this_month)}`, icon: CheckCircle2, color: 'text-teal-600 bg-teal-50' },
-          { label: 'Upcoming (scheduled)', value: `TZS ${fmt(s.upcoming_total)}`,     icon: Clock,        color: 'text-blue-600 bg-blue-50' },
-          { label: 'On hold (disputed)',   value: `TZS ${fmt(s.held_total)}`,          icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
+          { label: 'Disbursed (all time)', value: `TZS ${fmt(s.total_disbursed)}`,      icon: TrendingUp,   color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Disbursed this month', value: `TZS ${fmt(s.disbursed_this_month)}`,  icon: CheckCircle2, color: 'text-teal-600 bg-teal-50' },
+          { label: 'Scheduled (queued)',   value: `TZS ${fmt(s.upcoming_total)}`,        icon: Clock,        color: 'text-blue-600 bg-blue-50' },
+          { label: 'On hold (disputed)',   value: `TZS ${fmt(s.held_total)}`,            icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
         ].map((card) => (
           <div key={card.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${card.color.split(' ')[1]}`}>
@@ -153,6 +200,115 @@ function DisbursementsTab() {
           </div>
         ))}
       </div>
+
+      {/* ── Pending approval ── */}
+      {(loading || pending.length > 0) && (
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <SectionHeader count={pending.length}>Pending Approval</SectionHeader>
+            {pending.length > 0 && (
+              <div className="flex items-center gap-2">
+                {selected.size > 0 && (
+                  <Button
+                    size="sm"
+                    loading={approving === 'selected'}
+                    onClick={handleApproveSelected}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Approve Selected ({selected.size})
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  loading={approving === 'all'}
+                  onClick={handleApproveAll}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Approve All ({pending.length})
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}
+            </div>
+          ) : pending.length === 0 ? (
+            <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-gray-200">
+              <CheckCircle2 className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No pending payments — all clear</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-amber-50 border-b border-amber-100">
+                  <tr>
+                    <th className="px-4 py-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={selected.size === pending.length && pending.length > 0}
+                        onChange={(e) => setSelected(e.target.checked ? new Set(pending.map((p) => p.id)) : new Set())}
+                        className="rounded border-gray-300"
+                      />
+                    </th>
+                    {['CO', 'Facility', 'Shift Date', 'Shift Type', 'Amount', 'MM Details', ''].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-amber-700 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {pending.map((p) => (
+                    <tr key={p.id} className={`hover:bg-amber-50/30 transition-colors ${selected.has(p.id) ? 'bg-amber-50/50' : ''}`}>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{p.co?.display_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.facility?.facility_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.shift?.shift_date ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.shift?.shift_type ?? '—'}</td>
+                      <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">TZS {fmt(p.adjusted_pay_amount ?? p.co_total_pay)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {p.mobile_money_provider ? (
+                          <span className="text-xs text-gray-600">
+                            {PROVIDER_LABELS[p.mobile_money_provider]} ···{p.mobile_money_number?.slice(-4)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-red-500 font-medium">⚠ No MM details</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Button
+                          size="sm"
+                          loading={approving === p.id}
+                          disabled={!!approving && approving !== p.id}
+                          onClick={() => handleApprove(p.id)}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-amber-50/50 border-t border-amber-100">
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 text-xs font-semibold text-amber-800 text-right">Total to approve</td>
+                    <td className="px-4 py-3 font-bold text-gray-900">
+                      TZS {fmt(pending.reduce((sum, p) => sum + (p.adjusted_pay_amount ?? p.co_total_pay ?? 0), 0))}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Failed payments ── */}
       {failed.length > 0 && (
