@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { StatCard } from '../../components/common/Card';
-import { getAdminStats } from '../../lib/api';
+import { getAdminStats, getAdminActiveShifts } from '../../lib/api';
+import { ActiveShiftsBanner, normalizeAdminShift } from '../../components/shifts/ShiftProgressCard';
 
 // ── Shift status progress bar ─────────────────────────────────────
 
@@ -70,11 +71,18 @@ function ShiftProgressBar({ stats }) {
 // ── Main component ────────────────────────────────────────────────
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats]               = useState(null);
+  const [activeShifts, setActiveShifts] = useState([]);
+  const [loading, setLoading]           = useState(true);
 
   useEffect(() => {
-    getAdminStats().then((s) => { setStats(s); setLoading(false); });
+    Promise.all([
+      getAdminStats(),
+      getAdminActiveShifts(),
+    ]).then(([s, { data: active }]) => {
+      setStats(s);
+      setActiveShifts((active || []).map(normalizeAdminShift));
+    }).finally(() => setLoading(false));
   }, []);
 
   if (loading) {
@@ -95,6 +103,15 @@ export default function AdminDashboard() {
       title="Admin Overview"
       subtitle="Real-time platform statistics across all users and shifts"
     >
+      {/* ── Active shifts live tracker ── */}
+      <ActiveShiftsBanner
+        shifts={activeShifts}
+        role="admin"
+        viewAllLink="/admin/shifts"
+        loading={loading}
+        maxVisible={6}
+      />
+
       {/* ── Disputes callout (only shown when there are disputes) ── */}
       {stats.disputedShifts > 0 && (
         <Link

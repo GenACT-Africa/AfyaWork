@@ -9,13 +9,17 @@ import { StatCard } from '../../components/common/Card';
 import { StatCardSkeleton, ShiftCardSkeleton } from '../../components/common/Skeleton';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
+import {
+  ActiveShiftsBanner, ACTIVE_SHIFT_SET, normalizeFacilityShift,
+} from '../../components/shifts/ShiftProgressCard';
 
 export default function FacilityDashboard() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const [stats, setStats] = useState(null);
+  const [stats, setStats]           = useState(null);
+  const [allShifts, setAllShifts]   = useState([]);
   const [recentShifts, setRecentShifts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -24,9 +28,15 @@ export default function FacilityDashboard() {
       getFacilityShifts(user.id),
     ]).then(([statsRes, shiftsRes]) => {
       setStats(statsRes);
-      setRecentShifts((shiftsRes.data || []).slice(0, 5));
+      const shifts = shiftsRes.data || [];
+      setAllShifts(shifts);
+      setRecentShifts(shifts.slice(0, 5));
     }).finally(() => setLoading(false));
   }, [user?.id]);
+
+  const activeShifts = allShifts
+    .filter((s) => ACTIVE_SHIFT_SET.has(s.status))
+    .map(normalizeFacilityShift);
 
   return (
     <PageWrapper
@@ -34,19 +44,29 @@ export default function FacilityDashboard() {
       subtitle={t('facility.overview')}
       action={<Button to="/facility/post-shift"><Plus className="w-4 h-4" />{t('facility.post_shift')}</Button>}
     >
+      {/* ── Active shifts live tracker ── */}
+      <ActiveShiftsBanner
+        shifts={activeShifts}
+        role="facility"
+        viewAllLink="/facility/shifts"
+        loading={loading}
+      />
+
+      {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard label={t('facility.open_shifts')}       value={stats?.openShifts ?? 0}       icon={CalendarDays}  color="teal"   to="/facility/shifts" />
-            <StatCard label={t('facility.filled_shifts')}     value={stats?.filledShifts ?? 0}     icon={CheckCircle2}  color="blue"   to="/facility/shifts" />
-            <StatCard label={t('facility.pending_applicants')} value={stats?.pendingApplicants ?? 0} icon={Users}        color="yellow" to="/facility/shifts" />
-            <StatCard label={t('facility.cancelled')}         value={stats?.cancelledShifts ?? 0}  icon={XCircle}       color="red"    to="/facility/shifts" />
+            <StatCard label={t('facility.open_shifts')}        value={stats?.openShifts ?? 0}        icon={CalendarDays}  color="teal"   to="/facility/shifts" />
+            <StatCard label={t('facility.filled_shifts')}      value={stats?.filledShifts ?? 0}      icon={CheckCircle2}  color="blue"   to="/facility/shifts" />
+            <StatCard label={t('facility.pending_applicants')} value={stats?.pendingApplicants ?? 0} icon={Users}         color="yellow" to="/facility/shifts" />
+            <StatCard label={t('facility.cancelled')}          value={stats?.cancelledShifts ?? 0}   icon={XCircle}       color="red"    to="/facility/shifts" />
           </>
         )}
       </div>
 
+      {/* Recent shifts */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">{t('facility.recent_shifts')}</h2>

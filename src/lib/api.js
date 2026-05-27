@@ -52,20 +52,75 @@ export async function getFacilityShifts(facilityId) {
   if (error || !shifts || shifts.length === 0) return { data: shifts || [], error };
 
   const shiftIds = shifts.map((s) => s.id);
-  const { data: appCounts } = await supabase
-    .from('applications')
-    .select('shift_id, status')
-    .in('shift_id', shiftIds);
+  const coIds    = [...new Set(shifts.map((s) => s.assigned_co_id).filter(Boolean))];
 
-  const countMap = {};
+  const [{ data: appCounts }, { data: coUsers }] = await Promise.all([
+    supabase.from('applications').select('shift_id, status').in('shift_id', shiftIds),
+    coIds.length
+      ? supabase.from('users').select('id, display_name').in('id', coIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const countMap  = {};
   (appCounts || []).forEach(({ shift_id }) => {
     countMap[shift_id] = (countMap[shift_id] || 0) + 1;
   });
+  const coUserMap = Object.fromEntries((coUsers || []).map((u) => [u.id, u]));
 
   return {
-    data: shifts.map((s) => ({ ...s, applicant_count: countMap[s.id] || 0 })),
+    data: shifts.map((s) => ({
+      ...s,
+      applicant_count: countMap[s.id] || 0,
+      co_user: s.assigned_co_id ? (coUserMap[s.assigned_co_id] || null) : null,
+    })),
     error: null,
   };
+}
+
+/** Admin: fetch only active-lifecycle shifts platform-wide (for dashboard banner) */
+export async function getAdminActiveShifts() {
+  const ACTIVE = [
+    'filled', 'confirmed', 'pending_checkin_approval',
+    'in_progress', 'pending_checkout_approval',
+    'disputed_checkin', 'disputed_checkout',
+  ];
+  const { data: shifts, error } = await supabase
+    .from('shifts')
+    .select('*')
+    .in('status', ACTIVE)
+    .order('created_at', { ascending: false });
+
+  if (error || !shifts) return { data: [], error };
+
+  const facilityIds = [...new Set(shifts.map((s) => s.facility_id))];
+  const coIds       = [...new Set(shifts.map((s) => s.assigned_co_id).filter(Boolean))];
+
+  const [{ data: profiles }, { data: coUsers }] = await Promise.all([
+    supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
+    coIds.length
+      ? supabase.from('users').select('id, display_name').in('id', coIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const coUserMap  = Object.fromEntries((coUsers  || []).map((u) => [u.id, u]));
+
+  // Sort: disputed first, then by status priority
+  const PRIORITY = {
+    disputed_checkin: 0, disputed_checkout: 1,
+    pending_checkin_approval: 2, in_progress: 3,
+    pending_checkout_approval: 4, filled: 5, confirmed: 6,
+  };
+
+  const data = shifts
+    .map((s) => ({
+      ...s,
+      facility_profiles: profileMap[s.facility_id] || null,
+      co_user: s.assigned_co_id ? (coUserMap[s.assigned_co_id] || null) : null,
+    }))
+    .sort((a, b) => (PRIORITY[a.status] ?? 9) - (PRIORITY[b.status] ?? 9));
+
+  return { data, error: null };
 }
 
 export async function getShiftWithApplicants(shiftId) {
