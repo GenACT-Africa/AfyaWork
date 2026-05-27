@@ -114,3 +114,17 @@ BEGIN
 END;$$;
 
 GRANT EXECUTE ON FUNCTION public.approve_checkout(UUID) TO authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Admin RLS policies for shift_payments
+--
+-- The existing policies only cover SELECT for CO and facility.
+-- Without these, adminApprovePayment / adminMarkPaymentPaid silently affect
+-- 0 rows — no error, but the status never changes.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+DROP POLICY IF EXISTS "Admin full access to payments" ON public.shift_payments;
+CREATE POLICY "Admin full access to payments"
+  ON public.shift_payments
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
