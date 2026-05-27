@@ -12,7 +12,7 @@
  *   SUPABASE_SERVICE_ROLE_KEY — auto-injected by Supabase
  *
  * Optional:
- *   APP_URL      — defaults to https://afyawork.netlify.app
+ *   APP_URL      — defaults to https://afyawork.com
  *   ADMIN_PHONE  — admin phone for dispute/payment alerts
  *
  * WhatsApp Template SIDs — set AFTER templates are approved by Meta.
@@ -45,7 +45,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const TWILIO_SID   = Deno.env.get('TWILIO_ACCOUNT_SID')!;
 const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')!;
 const TWILIO_FROM  = Deno.env.get('TWILIO_WHATSAPP_FROM') ?? 'whatsapp:+255742770669';
-const APP_URL      = Deno.env.get('APP_URL') ?? 'https://afyawork.netlify.app';
+const APP_URL      = Deno.env.get('APP_URL') ?? 'https://afyawork.com';
 const ADMIN_PHONE  = Deno.env.get('ADMIN_PHONE') ?? '+255712168011';
 
 // ── Template SIDs — set once approved by Meta ─────────────────────────────────

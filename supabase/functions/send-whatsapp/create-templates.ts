@@ -3,7 +3,7 @@
  *
  * Recreates all templates WITHOUT URL variables, which is the main reason
  * Meta rejects templates for business-initiated (proactive) messaging.
- * URLs are now hardcoded as afyawork.netlify.app — only non-URL data is
+ * URLs are now hardcoded as afyawork.com — only non-URL data is
  * passed as variables.
  *
  * Usage:
@@ -55,7 +55,7 @@ const TEMPLATES = [
     sampleVars: {
       '1': 'Amina',
       '2': 'Clinical Officer',
-      '3': 'https://afyawork.netlify.app/auth/set-password?token=sample123',
+      '3': 'https://afyawork.com/auth/set-password?token=sample123',
     },
   },
 

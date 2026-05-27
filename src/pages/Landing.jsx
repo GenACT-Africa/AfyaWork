@@ -11,7 +11,9 @@ const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-
 
 export default function Landing() {
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth();
+  const { user, role, signOut, loading: authLoading } = useAuth();
+
+  const dashboardUrl = role === 'co' ? '/co/dashboard' : role === 'facility' ? '/facility/dashboard' : '/admin/dashboard';
   const navigate = useNavigate();
 
 const [shifts, setShifts] = useState([]);
@@ -58,15 +60,28 @@ const [shifts, setShifts] = useState([]);
           <div className="hidden md:flex items-center gap-4">
             <LanguageToggle />
             <div className="h-5 w-px bg-gray-200" />
-            <Link to="/auth/login" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
-              {t('landing.sign_in')}
-            </Link>
-            <Link to="/auth/register?role=facility" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
-              {t('landing.for_facilities')}
-            </Link>
-            <Link to="/auth/register?role=co" className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow transition-all active:scale-95">
-              {t('landing.join_as_worker')}
-            </Link>
+            {user ? (
+              <>
+                <button onClick={signOut} className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                  Sign out
+                </button>
+                <Link to={dashboardUrl} className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow transition-all active:scale-95">
+                  Dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/auth/login" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
+                  {t('landing.sign_in')}
+                </Link>
+                <Link to="/auth/register?role=facility" className="text-sm font-medium text-gray-600 hover:text-teal-600 transition-colors">
+                  {t('landing.for_facilities')}
+                </Link>
+                <Link to="/auth/register?role=co" className="bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-700 hover:to-teal-600 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow transition-all active:scale-95">
+                  {t('landing.join_as_worker')}
+                </Link>
+              </>
+            )}
           </div>
 
           <div className="md:hidden flex items-center gap-2">
@@ -79,9 +94,18 @@ const [shifts, setShifts] = useState([]);
 
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-100 bg-white shadow-lg px-4 py-3 space-y-1">
-            <Link to="/auth/login" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">{t('landing.sign_in')}</Link>
-            <Link to="/auth/register?role=facility" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">{t('landing.register_facility')}</Link>
-            <Link to="/auth/register?role=co" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl">{t('landing.join_as_co')}</Link>
+            {user ? (
+              <>
+                <Link to={dashboardUrl} onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl">Dashboard</Link>
+                <button onClick={() => { signOut(); setMobileMenuOpen(false); }} className="block w-full text-left px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl">Sign out</button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth/login" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">{t('landing.sign_in')}</Link>
+                <Link to="/auth/register?role=facility" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl">{t('landing.register_facility')}</Link>
+                <Link to="/auth/register?role=co" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-3 text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl">{t('landing.join_as_co')}</Link>
+              </>
+            )}
           </div>
         )}
       </nav>

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const RESEND_API_KEY  = Deno.env.get('RESEND_API_KEY')!;
-const APP_URL         = 'https://afyawork.netlify.app';
+const APP_URL         = Deno.env.get('APP_URL') ?? 'https://afyawork.com';
 const ADMIN_EMAIL     = 'admin@genactafrica.org';
 const ADMIN_PHONE     = Deno.env.get('ADMIN_PHONE') ?? '+255 000 000 000';
 const ADMIN_WHATSAPP  = Deno.env.get('ADMIN_WHATSAPP') ?? '+255 000 000 000';

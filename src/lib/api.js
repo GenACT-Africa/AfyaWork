@@ -595,7 +595,7 @@ export async function adminCreateFacility({ email, facility_name, facility_type,
   if (error) return { data: null, error };
   if (result?.error) return { data: null, error: { message: result.error } };
 
-  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
+  const inviteUrl = `${import.meta.env.VITE_APP_URL ?? 'https://afyawork.com'}/invite/setup?token=${result.invite_token}`;
 
   // Email invite (awaited — primary channel)
   await supabase.functions.invoke('send-invite-email', {
@@ -628,7 +628,7 @@ export async function adminCreateWorker({ email, display_name, license_number, s
   if (error) return { data: null, error };
   if (result?.error) return { data: null, error: { message: result.error } };
 
-  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
+  const inviteUrl = `${import.meta.env.VITE_APP_URL ?? 'https://afyawork.com'}/invite/setup?token=${result.invite_token}`;
 
   await supabase.functions.invoke('send-invite-email', {
     body: {
@@ -715,7 +715,7 @@ export async function adminResendInvite(userId) {
   });
   if (error) return { error };
 
-  const inviteUrl = `https://afyawork.netlify.app/invite/setup?token=${result.invite_token}`;
+  const inviteUrl = `${import.meta.env.VITE_APP_URL ?? 'https://afyawork.com'}/invite/setup?token=${result.invite_token}`;
 
   await supabase.functions.invoke('send-invite-email', {
     body: {

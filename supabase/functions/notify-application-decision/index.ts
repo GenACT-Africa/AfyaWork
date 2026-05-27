@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const ADMIN = 'admin@genactafrica.org';
-const APP_URL = 'https://afyawork.netlify.app';
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://afyawork.com';
 
 serve(async (req) => {
   try {
