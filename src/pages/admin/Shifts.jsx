@@ -37,6 +37,77 @@ const statusFilters = Object.keys(STATUS_LABELS);
 
 const DISPUTED_STATUSES = ['disputed_checkin', 'disputed_checkout'];
 
+// Lower number = shown first
+const STATUS_PRIORITY = {
+  disputed_checkin:         0,
+  disputed_checkout:        1,
+  pending_checkin_approval: 2,
+  in_progress:              3,
+  pending_checkout_approval:4,
+  filled:                   5,
+  confirmed:                6,
+  open:                     7,
+  completed:                8,
+  no_show:                  9,
+  cancelled:                10,
+};
+
+// ── Mini lifecycle progress bar ───────────────────────────────────
+
+const MINI_STAGES = ['Offer', 'Check-in', 'Active', 'Check-out', 'Done'];
+
+function getMiniStates(status) {
+  const s = status;
+  return [
+    // 0 — Offer accepted
+    ['confirmed','pending_checkin_approval','in_progress','pending_checkout_approval','completed','disputed_checkin','disputed_checkout'].includes(s)
+      ? 'done' : s === 'filled' ? 'current' : 'upcoming',
+    // 1 — Checked in
+    ['in_progress','pending_checkout_approval','completed','disputed_checkout'].includes(s) ? 'done'
+      : s === 'disputed_checkin' ? 'disputed'
+      : s === 'pending_checkin_approval' ? 'current' : 'upcoming',
+    // 2 — Active
+    ['pending_checkout_approval','completed','disputed_checkout'].includes(s) ? 'done'
+      : s === 'in_progress' ? 'current' : 'upcoming',
+    // 3 — Checked out
+    s === 'completed' ? 'done'
+      : s === 'disputed_checkout' ? 'disputed'
+      : s === 'pending_checkout_approval' ? 'current' : 'upcoming',
+    // 4 — Done
+    s === 'completed' ? 'done' : 'upcoming',
+  ];
+}
+
+const DOT = {
+  done:     'bg-emerald-500',
+  current:  'bg-blue-500 ring-2 ring-blue-200',
+  disputed: 'bg-amber-500 ring-2 ring-amber-200',
+  upcoming: 'bg-gray-200',
+};
+const LINE = { done: 'bg-emerald-300', other: 'bg-gray-200' };
+
+function ShiftMiniProgress({ status }) {
+  // No lifecycle to show for these statuses
+  if (!status || ['open', 'cancelled', 'no_show'].includes(status)) return null;
+
+  const states = getMiniStates(status);
+  return (
+    <div className="flex items-center mt-1.5" title={`Lifecycle: ${status.replace(/_/g, ' ')}`}>
+      {states.map((st, i) => (
+        <div key={i} className="flex items-center">
+          <div
+            className={`w-2 h-2 rounded-full transition-all ${DOT[st] || DOT.upcoming}`}
+            title={MINI_STAGES[i]}
+          />
+          {i < states.length - 1 && (
+            <div className={`w-4 h-px ${st === 'done' ? LINE.done : LINE.other}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminShifts() {
   const { search: queryString } = useLocation();
   const { show, ToastComponent } = useToast();
@@ -66,20 +137,28 @@ export default function AdminShifts() {
 
   useEffect(() => { loadShifts(); }, []);
 
-  const filtered = shifts.filter((s) => {
-    const q = searchQ.toLowerCase();
-    const matchesSearch =
-      s.facility_profiles?.facility_name?.toLowerCase().includes(q) ||
-      s.shift_type?.toLowerCase().includes(q) ||
-      s.co_user?.display_name?.toLowerCase().includes(q);
-    const matchesStatus =
-      statusFilter === 'all'
-        ? true
-        : statusFilter === 'disputed'
-          ? DISPUTED_STATUSES.includes(s.status)
-          : s.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filtered = shifts
+    .filter((s) => {
+      const q = searchQ.toLowerCase();
+      const matchesSearch =
+        s.facility_profiles?.facility_name?.toLowerCase().includes(q) ||
+        s.shift_type?.toLowerCase().includes(q) ||
+        s.co_user?.display_name?.toLowerCase().includes(q);
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'disputed'
+            ? DISPUTED_STATUSES.includes(s.status)
+            : s.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      const pa = STATUS_PRIORITY[a.status] ?? 99;
+      const pb = STATUS_PRIORITY[b.status] ?? 99;
+      if (pa !== pb) return pa - pb;
+      // Within same priority: most recently updated first
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
 
   const disputedCount = shifts.filter((s) => DISPUTED_STATUSES.includes(s.status)).length;
 
@@ -200,10 +279,11 @@ export default function AdminShifts() {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-col gap-1">
                         <Badge status={s.status} />
+                        <ShiftMiniProgress status={s.status} />
                         {isDisputed && s.dispute_reason && (
-                          <p className="text-[10px] text-amber-700 italic max-w-[140px] truncate">
+                          <p className="text-[10px] text-amber-700 italic max-w-[140px] truncate mt-0.5">
                             "{s.dispute_reason}"
                           </p>
                         )}

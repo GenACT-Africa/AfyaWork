@@ -13,6 +13,21 @@ import { ShiftCardSkeleton } from '../../components/common/Skeleton';
 const ACTIVE_STATUSES = ['filled', 'confirmed', 'pending_checkin_approval', 'in_progress', 'pending_checkout_approval', 'disputed_checkin', 'disputed_checkout', 'no_show'];
 const FILTERS = ['all', 'open', 'active', 'completed', 'cancelled'];
 
+// Lower number = shown first
+const STATUS_PRIORITY = {
+  disputed_checkin:          0,
+  disputed_checkout:         1,
+  pending_checkin_approval:  2,
+  in_progress:               3,
+  pending_checkout_approval: 4,
+  filled:                    5,
+  confirmed:                 6,
+  open:                      7,
+  completed:                 8,
+  no_show:                   9,
+  cancelled:                 10,
+};
+
 export default function ManageShifts() {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -27,11 +42,18 @@ export default function ManageShifts() {
     }).finally(() => setLoading(false));
   }, [user?.id]);
 
-  const filtered = filter === 'all'
-    ? shifts
-    : filter === 'active'
-      ? shifts.filter((s) => ACTIVE_STATUSES.includes(s.status))
-      : shifts.filter((s) => s.status === filter);
+  const filtered = (
+    filter === 'all'
+      ? shifts
+      : filter === 'active'
+        ? shifts.filter((s) => ACTIVE_STATUSES.includes(s.status))
+        : shifts.filter((s) => s.status === filter)
+  ).slice().sort((a, b) => {
+    const pa = STATUS_PRIORITY[a.status] ?? 99;
+    const pb = STATUS_PRIORITY[b.status] ?? 99;
+    if (pa !== pb) return pa - pb;
+    return new Date(b.shift_date) - new Date(a.shift_date);
+  });
 
   return (
     <PageWrapper

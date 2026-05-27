@@ -22,6 +22,37 @@ import { ShiftProgressTracker } from '../../components/shifts/ShiftProgressTrack
 
 const TABS = ['all', 'pending', 'approved', 'rejected'];
 
+// Lower number = shown first (active lifecycle at top)
+const SHIFT_STATUS_PRIORITY = {
+  disputed_checkin:          0,
+  disputed_checkout:         1,
+  pending_checkin_approval:  2,
+  in_progress:               3,
+  pending_checkout_approval: 4,
+  filled:                    5,
+  confirmed:                 6,
+  no_show:                   7,
+  completed:                 8,
+};
+const APP_STATUS_PRIORITY = { pending: 10, approved: 11, rejected: 12 };
+
+function sortApplications(apps, userId) {
+  return [...apps].sort((a, b) => {
+    const shiftA = a.shifts;
+    const shiftB = b.shifts;
+    const assignedA = shiftA?.assigned_co_id === userId;
+    const assignedB = shiftB?.assigned_co_id === userId;
+    const pa = assignedA && shiftA?.status
+      ? (SHIFT_STATUS_PRIORITY[shiftA.status] ?? 9)
+      : (APP_STATUS_PRIORITY[a.status] ?? 99);
+    const pb = assignedB && shiftB?.status
+      ? (SHIFT_STATUS_PRIORITY[shiftB.status] ?? 9)
+      : (APP_STATUS_PRIORITY[b.status] ?? 99);
+    if (pa !== pb) return pa - pb;
+    return new Date(b.applied_at) - new Date(a.applied_at);
+  });
+}
+
 export default function MyApplications() {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -69,7 +100,10 @@ export default function MyApplications() {
     return () => channels.forEach((ch) => supabase.removeChannel(ch));
   }, [applications, loadApps]);
 
-  const filtered = tab === 'all' ? applications : applications.filter((a) => a.status === tab);
+  const filtered = sortApplications(
+    tab === 'all' ? applications : applications.filter((a) => a.status === tab),
+    user?.id,
+  );
   const counts = {
     pending:  applications.filter((a) => a.status === 'pending').length,
     approved: applications.filter((a) => a.status === 'approved').length,
