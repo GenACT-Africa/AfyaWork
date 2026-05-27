@@ -86,10 +86,10 @@ export default function CODashboard() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard label={t('co.open_shifts')}      value={stats?.openShifts ?? 0}      icon={Search}       color="teal" />
-            <StatCard label={t('co.my_applications')}  value={stats?.myApplications ?? 0}  icon={ClipboardList} color="blue" />
-            <StatCard label={t('co.confirmed')}        value={stats?.confirmed ?? 0}        icon={CheckCircle2} color="purple" />
-            <StatCard label={t('co.pending')}          value={stats?.pending ?? 0}          icon={Clock}        color="yellow" />
+            <StatCard label={t('co.open_shifts')}      value={stats?.openShifts ?? 0}      icon={Search}       color="teal"   to="/co/shifts" />
+            <StatCard label={t('co.my_applications')}  value={stats?.myApplications ?? 0}  icon={ClipboardList} color="blue"  to="/co/applications" />
+            <StatCard label={t('co.confirmed')}        value={stats?.confirmed ?? 0}        icon={CheckCircle2} color="purple" to="/co/applications" />
+            <StatCard label={t('co.pending')}          value={stats?.pending ?? 0}          icon={Clock}        color="yellow" to="/co/applications" />
           </>
         )}
       </div>
@@ -117,7 +117,10 @@ export default function CODashboard() {
 function ApplicationRow({ app }) {
   const shift = app.shifts;
   return (
-    <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-5 py-4 shadow-sm hover:shadow-md transition-shadow">
+    <Link
+      to="/co/applications"
+      className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-5 py-4 shadow-sm hover:border-teal-200 hover:shadow-md transition-all group"
+    >
       <div className="flex items-center gap-4">
         <div className="hidden sm:flex w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl items-center justify-center shrink-0 border border-blue-100">
           <ClipboardList className="w-5 h-5 text-blue-500" />
@@ -133,9 +136,9 @@ function ApplicationRow({ app }) {
       <div className="flex items-center gap-3">
         <span className="text-sm text-gray-700 font-bold hidden sm:block">TZS {shift?.pay_amount?.toLocaleString()}</span>
         <Badge status={app.status} />
-        <ChevronRight className="w-4 h-4 text-gray-300" />
+        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-teal-500 transition-colors" />
       </div>
-    </div>
+    </Link>
   );
 }
 

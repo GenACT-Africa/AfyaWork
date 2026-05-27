@@ -418,8 +418,10 @@ export async function getAdminStats() {
     totalShifts:      shifts.length,
     openShifts:       shifts.filter((s) => s.status === 'open').length,
     filledShifts:     shifts.filter((s) => s.status === 'filled').length,
-    cancelledShifts:  shifts.filter((s) => s.status === 'cancelled').length,
+    confirmedShifts:  shifts.filter((s) => s.status === 'confirmed').length,
+    inProgressShifts: shifts.filter((s) => ['pending_checkin_approval','in_progress','pending_checkout_approval'].includes(s.status)).length,
     completedShifts:  shifts.filter((s) => s.status === 'completed').length,
+    cancelledShifts:  shifts.filter((s) => ['cancelled','no_show'].includes(s.status)).length,
     disputedShifts:   shifts.filter((s) => ['disputed_checkin','disputed_checkout'].includes(s.status)).length,
     totalApps:        apps.length,
     pendingApps:      apps.filter((a) => a.status === 'pending').length,
@@ -469,18 +471,27 @@ export async function getAdminShifts() {
   if (error || !shifts) return { data: [], error };
 
   const facilityIds = [...new Set(shifts.map((s) => s.facility_id))];
+  const coIds       = [...new Set(shifts.map((s) => s.assigned_co_id).filter(Boolean))];
   const shiftIds    = shifts.map((s) => s.id);
-  const [{ data: profiles }, { data: apps }] = await Promise.all([
+
+  const [{ data: profiles }, { data: apps }, { data: coUsers }] = await Promise.all([
     supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds),
     supabase.from('applications').select('shift_id').in('shift_id', shiftIds),
+    coIds.length
+      ? supabase.from('users').select('id, display_name, phone').in('id', coIds)
+      : Promise.resolve({ data: [] }),
   ]);
+
   const profileMap  = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
+  const coUserMap   = Object.fromEntries((coUsers  || []).map((u) => [u.id, u]));
   const appCountMap = {};
   (apps || []).forEach((a) => { appCountMap[a.shift_id] = (appCountMap[a.shift_id] || 0) + 1; });
+
   return {
     data: shifts.map((s) => ({
       ...s,
       facility_profiles: profileMap[s.facility_id] || null,
+      co_user:           s.assigned_co_id ? (coUserMap[s.assigned_co_id] || null) : null,
       applicant_count:   appCountMap[s.id] || 0,
     })),
     error: null,

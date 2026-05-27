@@ -39,10 +39,10 @@ export default function FacilityDashboard() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard label={t('facility.open_shifts')}       value={stats?.openShifts ?? 0}       icon={CalendarDays}  color="teal" />
-            <StatCard label={t('facility.filled_shifts')}     value={stats?.filledShifts ?? 0}     icon={CheckCircle2}  color="blue" />
-            <StatCard label={t('facility.pending_applicants')} value={stats?.pendingApplicants ?? 0} icon={Users}         color="yellow" />
-            <StatCard label={t('facility.cancelled')}         value={stats?.cancelledShifts ?? 0}  icon={XCircle}       color="red" />
+            <StatCard label={t('facility.open_shifts')}       value={stats?.openShifts ?? 0}       icon={CalendarDays}  color="teal"   to="/facility/shifts" />
+            <StatCard label={t('facility.filled_shifts')}     value={stats?.filledShifts ?? 0}     icon={CheckCircle2}  color="blue"   to="/facility/shifts" />
+            <StatCard label={t('facility.pending_applicants')} value={stats?.pendingApplicants ?? 0} icon={Users}        color="yellow" to="/facility/shifts" />
+            <StatCard label={t('facility.cancelled')}         value={stats?.cancelledShifts ?? 0}  icon={XCircle}       color="red"    to="/facility/shifts" />
           </>
         )}
       </div>
