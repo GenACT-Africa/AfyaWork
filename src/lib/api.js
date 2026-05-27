@@ -133,8 +133,12 @@ export async function getMyCOApplications(coId) {
       *,
       shifts(
         id, shift_date, shift_type, pay_amount, status, facility_id, assigned_co_id,
-        checkin_at, checkout_at, checkin_approved_at, checkout_approved_at,
-        offer_expires_at, dispute_reason, dispute_raised_at, reliability_flag
+        offer_responded_at, offer_expires_at,
+        checkin_at, checkin_approved_at,
+        checkout_at, checkout_approved_at,
+        dispute_reason, dispute_raised_at, dispute_resolved_at,
+        cancellation_reason, cancelled_by,
+        reliability_flag
       )
     `)
     .eq('co_id', coId)

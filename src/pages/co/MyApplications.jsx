@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  ClipboardList, Search, CheckCircle2, XCircle, LogIn, LogOut,
-  Clock, AlertTriangle, Star, MessageSquare, ChevronDown, ChevronUp,
+  ClipboardList, Search, XCircle, Star, MessageSquare, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -18,6 +17,8 @@ import { StarRating } from '../../components/common/StarRating';
 import { ShiftCardSkeleton } from '../../components/common/Skeleton';
 import { Avatar } from '../../components/common/Avatar';
 import { useToast } from '../../components/common/Toast';
+import { supabase } from '../../lib/supabase';
+import { ShiftProgressTracker } from '../../components/shifts/ShiftProgressTracker';
 
 const TABS = ['all', 'pending', 'approved', 'rejected'];
 
@@ -37,6 +38,36 @@ export default function MyApplications() {
   }, [user?.id]);
 
   useEffect(() => { loadApps(); }, [loadApps]);
+
+  // ── Real-time: application status changes (offer approved / rejected) ──
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`co-apps-${user.id}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'applications',
+        filter: `user_id=eq.${user.id}`,
+      }, () => loadApps())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user?.id, loadApps]);
+
+  // ── Real-time: shift lifecycle changes (checkin/checkout/disputes) ──
+  useEffect(() => {
+    if (!applications.length) return;
+    const shiftIds = [...new Set(applications.map((a) => a.shifts?.id).filter(Boolean))];
+    if (!shiftIds.length) return;
+    const channels = shiftIds.map((shiftId) =>
+      supabase
+        .channel(`shift-live-${shiftId}`)
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'shifts',
+          filter: `id=eq.${shiftId}`,
+        }, () => loadApps())
+        .subscribe()
+    );
+    return () => channels.forEach((ch) => supabase.removeChannel(ch));
+  }, [applications, loadApps]);
 
   const filtered = tab === 'all' ? applications : applications.filter((a) => a.status === tab);
   const counts = {
@@ -99,13 +130,13 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
   const facility = shift?.facility_profiles;
   const status   = shift?.status;
 
-  const [acting, setActing]         = useState(null);
+  const [acting, setActing]             = useState(null);
   const [declineModal, setDeclineModal] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
   const [ratingModal, setRatingModal]   = useState(false);
-  const [stars, setStars]           = useState(0);
-  const [comment, setComment]       = useState('');
-  const [showDetails, setShowDetails] = useState(false);
+  const [stars, setStars]               = useState(0);
+  const [comment, setComment]           = useState('');
+  const [showDetails, setShowDetails]   = useState(false);
 
   const isAssignedCO = shift?.assigned_co_id === userId;
   const myRating     = app.my_rating;
@@ -145,8 +176,6 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
     if (ok) { setRatingModal(false); show('Thank you for your feedback!', 'success'); }
   }
 
-  const isApproved = app.status === 'approved';
-
   // Border colour by shift lifecycle status
   const borderClass = (() => {
     if (status === 'filled' && isAssignedCO)            return 'border-blue-200 bg-blue-50/20';
@@ -157,7 +186,7 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
     if (status === 'completed')                          return 'border-emerald-200 bg-emerald-50/20';
     if (['disputed_checkin','disputed_checkout'].includes(status)) return 'border-red-200 bg-red-50/20';
     if (status === 'no_show')                            return 'border-gray-300 bg-gray-50/50';
-    if (isApproved)                                      return 'border-emerald-200 bg-emerald-50/30';
+    if (app.status === 'approved')                       return 'border-emerald-200 bg-emerald-50/30';
     return 'border-gray-100 hover:shadow-md';
   })();
 
@@ -187,8 +216,7 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
-          {/* Show shift status badge for approved apps in the new lifecycle */}
-          {isAssignedCO && status && !['open','filled'].includes(status)
+          {isAssignedCO && status && !['open', 'filled'].includes(status)
             ? <Badge status={status} />
             : <Badge status={app.status} />
           }
@@ -196,135 +224,21 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
         </div>
       </div>
 
-      {/* ── Lifecycle panels (only for approved + assigned CO) ── */}
-
-      {/* OFFER PENDING — facility selected this CO */}
-      {isApproved && isAssignedCO && status === 'filled' && (
-        <LifecyclePanel color="blue" icon={<Star className="w-5 h-5 text-blue-600" />}>
-          <p className="font-bold text-blue-900">You've been selected! 🎉</p>
-          <p className="text-sm text-blue-700 mt-0.5">
-            Review this offer and respond.
-            {shift.offer_expires_at && (
-              <span className="ml-1 text-xs text-blue-500">
-                Expires {new Date(shift.offer_expires_at).toLocaleString('en-TZ', { dateStyle: 'short', timeStyle: 'short' })}
-              </span>
-            )}
-          </p>
-          <div className="flex gap-2 mt-3">
-            <Button size="sm" loading={acting === 'accept'} disabled={!!acting} onClick={handleAccept}>
-              <CheckCircle2 className="w-4 h-4" /> Accept Offer
-            </Button>
-            <Button variant="secondary" size="sm" disabled={!!acting}
-              onClick={() => setDeclineModal(true)}>
-              <XCircle className="w-4 h-4" /> Decline
-            </Button>
-          </div>
-        </LifecyclePanel>
-      )}
-
-      {/* CONFIRMED — CO accepted, waiting for shift day */}
-      {isApproved && isAssignedCO && status === 'confirmed' && (
-        <LifecyclePanel color="indigo" icon={<CheckCircle2 className="w-5 h-5 text-indigo-600" />}>
-          <p className="font-bold text-indigo-900">Shift confirmed ✓</p>
-          <p className="text-sm text-indigo-700 mt-0.5">You're all set. Check in on shift day to begin.</p>
-          <div className="mt-3">
-            <Button size="sm" loading={acting === 'checkin'} disabled={!!acting} onClick={handleCheckin}>
-              <LogIn className="w-4 h-4" /> Check In Now
-            </Button>
-          </div>
-        </LifecyclePanel>
-      )}
-
-      {/* PENDING CHECKIN APPROVAL */}
-      {isApproved && isAssignedCO && status === 'pending_checkin_approval' && (
-        <LifecyclePanel color="amber" icon={<Clock className="w-5 h-5 text-amber-600" />}>
-          <p className="font-bold text-amber-900">Checked in</p>
-          <p className="text-sm text-amber-700 mt-0.5">
-            Waiting for the facility to confirm you're on-site.
-            {shift.checkin_at && (
-              <span className="ml-1 text-xs">({new Date(shift.checkin_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })})</span>
-            )}
-          </p>
-        </LifecyclePanel>
-      )}
-
-      {/* IN PROGRESS */}
-      {isApproved && isAssignedCO && status === 'in_progress' && (
-        <LifecyclePanel color="teal" icon={<LogIn className="w-5 h-5 text-teal-600" />}>
-          <p className="font-bold text-teal-900">Shift in progress 🟢</p>
-          <p className="text-sm text-teal-700 mt-0.5">
-            Check-in confirmed.
-            {shift.checkin_approved_at && (
-              <span className="ml-1 text-xs">Started at {new Date(shift.checkin_approved_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}</span>
-            )}
-          </p>
-          <div className="mt-3">
-            <Button size="sm" loading={acting === 'checkout'} disabled={!!acting} onClick={handleCheckout}>
-              <LogOut className="w-4 h-4" /> Check Out
-            </Button>
-          </div>
-        </LifecyclePanel>
-      )}
-
-      {/* PENDING CHECKOUT APPROVAL */}
-      {isApproved && isAssignedCO && status === 'pending_checkout_approval' && (
-        <LifecyclePanel color="orange" icon={<Clock className="w-5 h-5 text-orange-600" />}>
-          <p className="font-bold text-orange-900">Checked out</p>
-          <p className="text-sm text-orange-700 mt-0.5">
-            Waiting for the facility to confirm shift completion.
-            {shift.checkout_at && (
-              <span className="ml-1 text-xs">({new Date(shift.checkout_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })})</span>
-            )}
-          </p>
-        </LifecyclePanel>
-      )}
-
-      {/* COMPLETED */}
-      {isApproved && isAssignedCO && status === 'completed' && (
-        <LifecyclePanel color="emerald" icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}>
-          <p className="font-bold text-emerald-900">Shift completed! 🎉</p>
-          {myRating ? (
-            <div className="mt-2">
-              <p className="text-sm text-emerald-700 mb-1">Your rating for this facility:</p>
-              <StarRating value={myRating.stars} readonly size="sm" />
-            </div>
-          ) : (
-            <div className="mt-2">
-              <p className="text-sm text-emerald-700 mb-2">Share your experience — rate this facility.</p>
-              <Button size="sm" onClick={() => setRatingModal(true)}>
-                <Star className="w-4 h-4" /> Rate Facility
-              </Button>
-            </div>
-          )}
-        </LifecyclePanel>
-      )}
-
-      {/* DISPUTED */}
-      {isAssignedCO && ['disputed_checkin','disputed_checkout'].includes(status) && (
-        <LifecyclePanel color="red" icon={<AlertTriangle className="w-5 h-5 text-red-600" />}>
-          <p className="font-bold text-red-900">Dispute under review</p>
-          <p className="text-sm text-red-700 mt-0.5">
-            The facility raised a dispute. Our admin team will review and resolve it.
-            {shift.dispute_reason && (
-              <span className="block mt-1 text-xs italic">"{shift.dispute_reason}"</span>
-            )}
-          </p>
-        </LifecyclePanel>
-      )}
-
-      {/* NO SHOW */}
-      {isAssignedCO && status === 'no_show' && (
-        <LifecyclePanel color="gray" icon={<AlertTriangle className="w-5 h-5 text-gray-600" />}>
-          <p className="font-bold text-gray-800">No-show recorded</p>
-          <p className="text-sm text-gray-600 mt-0.5">This shift was marked as a no-show after admin review.</p>
-        </LifecyclePanel>
-      )}
-
-      {/* Old-style approved banner (when not yet in the new lifecycle) */}
-      {isApproved && isAssignedCO && status === 'filled' && false && (
-        <div className="mt-4 pt-4 border-t border-emerald-100 bg-emerald-50 rounded-xl px-4 py-3">
-          <p className="text-sm text-emerald-800 font-semibold">{t('co.selected')}</p>
-          <p className="text-xs text-emerald-600 mt-0.5">{t('co.facility_will_contact')}</p>
+      {/* ── Shift Progress Tracker (only for the assigned CO) ── */}
+      {isAssignedCO && (
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <ShiftProgressTracker
+            shift={shift}
+            role="co"
+            myRating={myRating}
+            facilityName={facility?.facility_name}
+            onAccept={handleAccept}
+            onDecline={() => setDeclineModal(true)}
+            onCheckin={handleCheckin}
+            onCheckout={handleCheckout}
+            onRate={() => setRatingModal(true)}
+            actionLoading={acting}
+          />
         </div>
       )}
 
@@ -415,31 +329,6 @@ function ApplicationCard({ app, userId, t, show, onRefresh }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── LifecyclePanel helper ─────────────────────────────────────────
-
-const PANEL_COLORS = {
-  blue:    'bg-blue-50 border-blue-100',
-  indigo:  'bg-indigo-50 border-indigo-100',
-  amber:   'bg-amber-50 border-amber-100',
-  teal:    'bg-teal-50 border-teal-100',
-  orange:  'bg-orange-50 border-orange-100',
-  emerald: 'bg-emerald-50 border-emerald-100',
-  red:     'bg-red-50 border-red-100',
-  gray:    'bg-gray-50 border-gray-200',
-};
-
-function LifecyclePanel({ color, icon, children }) {
-  const cls = PANEL_COLORS[color] || PANEL_COLORS.gray;
-  return (
-    <div className={`mt-4 pt-4 border-t border-gray-100`}>
-      <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${cls}`}>
-        <div className="mt-0.5 shrink-0">{icon}</div>
-        <div className="flex-1 min-w-0">{children}</div>
-      </div>
     </div>
   );
 }

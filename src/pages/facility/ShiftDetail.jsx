@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CalendarDays, Clock, Banknote, Users, CheckCircle, XCircle,
   AlertTriangle, Eye, X, Mail, Phone, Award, Star, Zap, Stethoscope,
-  LogIn, LogOut, MessageSquare, Shield, Briefcase, MapPin,
+  MessageSquare, Briefcase, MapPin,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +19,7 @@ import { StarRating } from '../../components/common/StarRating';
 import { useToast } from '../../components/common/Toast';
 import { supabase } from '../../lib/supabase';
 import { Avatar } from '../../components/common/Avatar';
+import { ShiftProgressTracker } from '../../components/shifts/ShiftProgressTracker';
 
 // ── Tier display config ───────────────────────────────────────────
 const TIER = {
@@ -179,6 +180,24 @@ export default function ShiftDetail() {
         <ArrowLeft className="w-4 h-4" /> {t('facility.back_to_shifts')}
       </Link>
 
+      {/* ── Full-width shift progress tracker ── */}
+      {!isOpen && !isCancelled && (
+        <Card className="p-5 mb-6">
+          <ShiftProgressTracker
+            shift={shift}
+            role="facility"
+            myRating={facilityRating}
+            coName={assignedCO?.display_name}
+            onApproveCheckin={handleApproveCheckin}
+            onDisputeCheckin={() => { setDisputeModal('checkin'); setDisputeReason(''); }}
+            onApproveCheckout={handleApproveCheckout}
+            onDisputeCheckout={() => { setDisputeModal('checkout'); setDisputeReason(''); }}
+            onRate={() => setRatingModal(true)}
+            actionLoading={actionLoading}
+          />
+        </Card>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-6">
         {/* ── Left: Shift info ── */}
         <div className="lg:col-span-1 space-y-4">
@@ -212,120 +231,6 @@ export default function ShiftDetail() {
               </Button>
             )}
           </Card>
-
-          {/* ── Lifecycle action panels ── */}
-
-          {/* CONFIRMED */}
-          {isConfirmed && assignedCO && (
-            <LifecycleCard color="indigo" icon={<CheckCircle className="w-5 h-5 text-indigo-600" />}>
-              <p className="font-bold text-indigo-900">CO confirmed attendance</p>
-              <p className="text-sm text-indigo-700 mt-1">
-                <strong>{assignedCO.display_name}</strong> accepted the offer and will show up on shift day.
-              </p>
-            </LifecycleCard>
-          )}
-
-          {/* PENDING CHECKIN APPROVAL */}
-          {isPendingCheckin && assignedCO && (
-            <LifecycleCard color="amber" icon={<LogIn className="w-5 h-5 text-amber-700" />}>
-              <p className="font-bold text-amber-900">CO has checked in</p>
-              <p className="text-sm text-amber-700 mt-1">
-                <strong>{assignedCO.display_name}</strong> checked in
-                {shift.checkin_at && (
-                  <span className="ml-1">at {new Date(shift.checkin_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}</span>
-                )}. Confirm they are on-site.
-              </p>
-              <div className="flex gap-2 mt-3">
-                <Button size="sm" loading={actionLoading === 'approve-checkin'} disabled={!!actionLoading}
-                  onClick={handleApproveCheckin}>
-                  <CheckCircle className="w-4 h-4" /> Confirm Check-in
-                </Button>
-                <Button variant="secondary" size="sm" disabled={!!actionLoading}
-                  onClick={() => { setDisputeModal('checkin'); setDisputeReason(''); }}>
-                  <AlertTriangle className="w-4 h-4" /> Dispute
-                </Button>
-              </div>
-            </LifecycleCard>
-          )}
-
-          {/* IN PROGRESS */}
-          {isInProgress && (
-            <LifecycleCard color="teal" icon={<LogIn className="w-5 h-5 text-teal-600" />}>
-              <p className="font-bold text-teal-900">Shift in progress 🟢</p>
-              <p className="text-sm text-teal-700 mt-1">
-                {assignedCO?.display_name} is on-site. Waiting for checkout.
-                {shift.checkin_approved_at && (
-                  <span className="block text-xs mt-0.5">
-                    Started {new Date(shift.checkin_approved_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}
-                  </span>
-                )}
-              </p>
-            </LifecycleCard>
-          )}
-
-          {/* PENDING CHECKOUT APPROVAL */}
-          {isPendingCheckout && assignedCO && (
-            <LifecycleCard color="orange" icon={<LogOut className="w-5 h-5 text-orange-700" />}>
-              <p className="font-bold text-orange-900">CO has checked out</p>
-              <p className="text-sm text-orange-700 mt-1">
-                <strong>{assignedCO.display_name}</strong> checked out
-                {shift.checkout_at && (
-                  <span className="ml-1">at {new Date(shift.checkout_at).toLocaleTimeString('en-TZ', { timeStyle: 'short' })}</span>
-                )}. Confirm to mark shift as complete.
-              </p>
-              <div className="flex gap-2 mt-3">
-                <Button size="sm" loading={actionLoading === 'approve-checkout'} disabled={!!actionLoading}
-                  onClick={handleApproveCheckout}>
-                  <CheckCircle className="w-4 h-4" /> Confirm Checkout
-                </Button>
-                <Button variant="secondary" size="sm" disabled={!!actionLoading}
-                  onClick={() => { setDisputeModal('checkout'); setDisputeReason(''); }}>
-                  <AlertTriangle className="w-4 h-4" /> Dispute
-                </Button>
-              </div>
-            </LifecycleCard>
-          )}
-
-          {/* COMPLETED */}
-          {isCompleted && (
-            <LifecycleCard color="emerald" icon={<CheckCircle className="w-5 h-5 text-emerald-600" />}>
-              <p className="font-bold text-emerald-900">Shift complete! 🎉</p>
-              {facilityRating ? (
-                <div className="mt-2">
-                  <p className="text-sm text-emerald-700 mb-1">Your rating for {assignedCO?.display_name}:</p>
-                  <StarRating value={facilityRating.stars} readonly size="sm" />
-                </div>
-              ) : assignedCO ? (
-                <div className="mt-2">
-                  <p className="text-sm text-emerald-700 mb-2">Rate your experience with this CO.</p>
-                  <Button size="sm" onClick={() => setRatingModal(true)}>
-                    <Star className="w-4 h-4" /> Rate CO
-                  </Button>
-                </div>
-              ) : null}
-            </LifecycleCard>
-          )}
-
-          {/* DISPUTED */}
-          {isDisputed && (
-            <LifecycleCard color="red" icon={<Shield className="w-5 h-5 text-red-600" />}>
-              <p className="font-bold text-red-900">Dispute under review</p>
-              <p className="text-sm text-red-700 mt-1">
-                Admin has been notified and will resolve this dispute.
-                {shift.dispute_reason && (
-                  <span className="block text-xs mt-1 italic">"{shift.dispute_reason}"</span>
-                )}
-              </p>
-            </LifecycleCard>
-          )}
-
-          {/* NO SHOW */}
-          {isNoShow && (
-            <LifecycleCard color="gray" icon={<AlertTriangle className="w-5 h-5 text-gray-500" />}>
-              <p className="font-bold text-gray-800">No-show recorded</p>
-              <p className="text-sm text-gray-600 mt-1">Admin reviewed the dispute and recorded a no-show for this CO.</p>
-            </LifecycleCard>
-          )}
         </div>
 
         {/* ── Right: Applicants ── */}
@@ -475,29 +380,6 @@ export default function ShiftDetail() {
         </div>
       )}
     </PageWrapper>
-  );
-}
-
-// ── Lifecycle card (left sidebar) ─────────────────────────────────
-
-const CARD_COLORS = {
-  indigo:  'border-indigo-100 bg-indigo-50',
-  amber:   'border-amber-200 bg-amber-50',
-  teal:    'border-teal-100 bg-teal-50',
-  orange:  'border-orange-200 bg-orange-50',
-  emerald: 'border-emerald-100 bg-emerald-50',
-  red:     'border-red-200 bg-red-50',
-  gray:    'border-gray-200 bg-gray-50',
-};
-
-function LifecycleCard({ color, icon, children }) {
-  return (
-    <div className={`rounded-2xl border p-5 ${CARD_COLORS[color] || CARD_COLORS.gray}`}>
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0">{icon}</div>
-        <div className="flex-1 min-w-0">{children}</div>
-      </div>
-    </div>
   );
 }
 
