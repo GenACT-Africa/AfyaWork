@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, ClipboardList, CheckCircle2, Clock, ChevronRight,
-  Briefcase, AlertTriangle,
+  Briefcase, AlertTriangle, TrendingUp, Wallet, ArrowRight, Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { getCODashboardStats, getMyCOApplications, getCOProfile } from '../../lib/api';
+import { getCODashboardStats, getMyCOApplications, getCOProfile, getCOPaymentStats } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { StatCard } from '../../components/common/Card';
 import { StatCardSkeleton, ShiftCardSkeleton } from '../../components/common/Skeleton';
@@ -21,10 +21,11 @@ import {
 export default function CODashboard() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const [stats, setStats]         = useState(null);
-  const [allApps, setAllApps]     = useState([]);
+  const [stats, setStats]           = useState(null);
+  const [payStats, setPayStats]     = useState(null);
+  const [allApps, setAllApps]       = useState([]);
   const [recentApps, setRecentApps] = useState([]);
-  const [loading, setLoading]     = useState(true);
+  const [loading, setLoading]       = useState(true);
   const [availStatus, setAvailStatus]       = useState(null);
   const [availDatePassed, setAvailDatePassed] = useState(false);
 
@@ -34,8 +35,10 @@ export default function CODashboard() {
       getCODashboardStats(user.id),
       getMyCOApplications(user.id),
       getCOProfile(user.id),
-    ]).then(([statsRes, appsRes, profileRes]) => {
+      getCOPaymentStats(user.id),
+    ]).then(([statsRes, appsRes, profileRes, payStatsRes]) => {
       setStats(statsRes);
+      setPayStats(payStatsRes);
       const apps = appsRes.data || [];
       setAllApps(apps);
       setRecentApps(apps.slice(0, 4));
@@ -116,6 +119,9 @@ export default function CODashboard() {
         )}
       </div>
 
+      {/* ── Earnings summary ── */}
+      <EarningsCard stats={payStats} loading={loading} />
+
       {/* Recent applications */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -134,6 +140,108 @@ export default function CODashboard() {
         )}
       </div>
     </PageWrapper>
+  );
+}
+
+// ── EarningsCard ──────────────────────────────────────────────────
+
+const MOTIVATING_MESSAGES = [
+  { min: 0,         max: 0,         text: 'Browse shifts and start earning today.' },
+  { min: 1,         max: 99_999,    text: 'Great start — keep picking up shifts!' },
+  { min: 100_000,   max: 499_999,   text: 'You\'re building real momentum. 💪' },
+  { min: 500_000,   max: 999_999,   text: 'Half a million earned — impressive work!' },
+  { min: 1_000_000, max: 4_999_999, text: 'Over a million earned. You\'re a top performer!' },
+  { min: 5_000_000, max: Infinity,  text: 'Elite earner. AfyaWork is working for you! 🏆' },
+];
+
+function getMotivatingMessage(totalEarned) {
+  return MOTIVATING_MESSAGES.find((m) => totalEarned >= m.min && totalEarned <= m.max)?.text ?? '';
+}
+
+function EarningsCard({ stats, loading }) {
+  if (loading) {
+    return <div className="h-40 bg-gray-100 rounded-3xl animate-pulse mb-8" />;
+  }
+
+  const totalEarned      = stats?.totalEarned      ?? 0;
+  const earnedThisMonth  = stats?.earnedThisMonth  ?? 0;
+  const upcoming         = stats?.upcoming          ?? 0;
+  const hasAnyActivity   = totalEarned > 0 || upcoming > 0;
+
+  // ── No earnings yet — motivational empty state ─────────────────
+  if (!hasAnyActivity) {
+    return (
+      <Link
+        to="/co/shifts"
+        className="flex items-center gap-5 mb-8 bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 rounded-3xl px-6 py-5 hover:shadow-md transition-all group"
+      >
+        <div className="w-14 h-14 bg-gradient-to-br from-teal-500 to-emerald-400 rounded-2xl flex items-center justify-center shrink-0 shadow-lg group-hover:scale-105 transition-transform">
+          <TrendingUp className="w-7 h-7 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-gray-900 text-lg">Start earning today</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Pick up a locum shift and your earnings will appear here after payment.
+          </p>
+        </div>
+        <div className="flex items-center gap-1 text-sm font-semibold text-teal-600 whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
+          Browse shifts <ArrowRight className="w-4 h-4" />
+        </div>
+      </Link>
+    );
+  }
+
+  // ── Has earnings — hero earnings card ──────────────────────────
+  return (
+    <Link to="/co/payments" className="block mb-8 group">
+      <div className="relative overflow-hidden bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500 rounded-3xl px-6 py-6 shadow-lg shadow-teal-200 hover:shadow-xl hover:shadow-teal-200 transition-all">
+
+        {/* Background decoration */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-16 translate-x-16 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full translate-y-12 -translate-x-12 pointer-events-none" />
+
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-4 relative">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Wallet className="w-4 h-4 text-teal-200" />
+              <p className="text-sm font-medium text-teal-100">Total Earned</p>
+            </div>
+            <p className="text-4xl font-black text-white tracking-tight">
+              TZS {totalEarned.toLocaleString()}
+            </p>
+            <p className="text-sm text-teal-200 mt-1.5 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              {getMotivatingMessage(totalEarned)}
+            </p>
+          </div>
+          <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center group-hover:bg-white/25 transition-colors">
+            <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-3 relative">
+          <div className="bg-white/15 backdrop-blur-sm rounded-2xl px-4 py-3">
+            <p className="text-xs text-teal-200 font-medium mb-0.5">This Month</p>
+            <p className={`font-bold text-white ${earnedThisMonth >= 1_000_000 ? 'text-lg' : 'text-xl'}`}>
+              {earnedThisMonth > 0 ? `TZS ${earnedThisMonth.toLocaleString()}` : '—'}
+            </p>
+          </div>
+          <div className="bg-white/15 backdrop-blur-sm rounded-2xl px-4 py-3">
+            <p className="text-xs text-teal-200 font-medium mb-0.5">Coming Soon</p>
+            <p className={`font-bold ${upcoming > 0 ? 'text-white' : 'text-teal-300'} ${upcoming >= 1_000_000 ? 'text-lg' : 'text-xl'}`}>
+              {upcoming > 0 ? `TZS ${upcoming.toLocaleString()}` : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <p className="text-xs text-teal-300 mt-3 relative text-right">
+          Tap to view full payment history →
+        </p>
+      </div>
+    </Link>
   );
 }
 
