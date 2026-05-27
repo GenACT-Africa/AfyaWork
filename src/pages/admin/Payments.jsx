@@ -728,24 +728,61 @@ function ConfigTab() {
           </div>
         </div>
 
+        {/* ── Mock Mode toggle ── */}
+        <div className={`mt-4 flex items-start gap-4 rounded-xl px-4 py-3 border ${
+          config.selcom_mock_mode === 'true'
+            ? 'bg-blue-50 border-blue-200'
+            : 'bg-gray-50 border-gray-200'
+        }`}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={config.selcom_mock_mode === 'true'}
+            onClick={() => setConfig((c) => ({ ...c, selcom_mock_mode: c.selcom_mock_mode === 'true' ? 'false' : 'true' }))}
+            className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none ${
+              config.selcom_mock_mode === 'true' ? 'bg-blue-500' : 'bg-gray-300'
+            }`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              config.selcom_mock_mode === 'true' ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              Mock Mode
+              {config.selcom_mock_mode === 'true' && (
+                <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ON — no real payments</span>
+              )}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              When enabled, disbursement batches complete instantly with <code className="text-xs bg-gray-100 px-1 rounded">MOCK-*</code> references — no real Selcom API calls.
+              {config.selcom_mock_mode !== 'true' && !isProduction && (
+                <> Also auto-activates when <code className="text-xs bg-gray-100 px-1 rounded">SELCOM_API_KEY</code> secret is not set.</>
+              )}
+            </p>
+          </div>
+        </div>
+
         <div className="mt-4 flex items-center gap-3">
           <Button
             size="sm"
             variant={isProduction ? 'danger' : 'primary'}
             loading={saving === 'selcom'}
             onClick={async () => {
-              if (config.selcom_environment === 'production') {
-                if (!confirm('⚠️ You are switching to PRODUCTION. Real money will be transferred. Are you sure?')) return;
+              if (config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true') {
+                if (!confirm('⚠️ You are switching to PRODUCTION with Mock Mode OFF. Real money will be transferred. Are you sure?')) return;
               }
               setSaving('selcom');
               await Promise.all([
                 updateSystemConfig('selcom_environment', config.selcom_environment),
                 updateSystemConfig('selcom_status',      config.selcom_status),
+                updateSystemConfig('selcom_mock_mode',   config.selcom_mock_mode ?? 'true'),
               ]);
               setSaving(null);
-              show(config.selcom_environment === 'production'
+              show(config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true'
                 ? '⚠️ Switched to PRODUCTION — live payments enabled'
-                : 'Saved — sandbox mode active', config.selcom_environment === 'production' ? 'error' : 'success');
+                : 'Saved — ' + (config.selcom_mock_mode === 'true' ? 'mock mode active' : 'sandbox mode active'),
+                config.selcom_environment === 'production' && config.selcom_mock_mode !== 'true' ? 'error' : 'success');
             }}
           >
             <Save className="w-4 h-4" /> Save Selcom Settings

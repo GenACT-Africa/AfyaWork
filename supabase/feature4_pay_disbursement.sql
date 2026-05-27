@@ -45,6 +45,7 @@ INSERT INTO public.system_config (key, value) VALUES
   ('overdue_escalation_day',         '20'),     -- escalation if unpaid by 20th
   ('selcom_environment',             'sandbox'),
   ('selcom_status',                  'active'),
+  ('selcom_mock_mode',               'true'),   -- mock mode ON by default until real Selcom credentials are configured
   ('mpesa_till_number',              ''),
   ('mixx_by_yas_till_number',        ''),
   ('airtel_money_till_number',       ''),
