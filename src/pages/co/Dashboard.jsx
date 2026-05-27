@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, ClipboardList, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
+import { Search, ClipboardList, CheckCircle2, Clock, ChevronRight, Briefcase, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { getCODashboardStats, getMyCOApplications } from '../../lib/api';
+import { getCODashboardStats, getMyCOApplications, getCOProfile } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { StatCard } from '../../components/common/Card';
 import { StatCardSkeleton, ShiftCardSkeleton } from '../../components/common/Skeleton';
@@ -16,15 +16,35 @@ export default function CODashboard() {
   const [stats, setStats] = useState(null);
   const [recentApps, setRecentApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [availStatus, setAvailStatus] = useState(null);   // null = loading, false = not set, object = set
+  const [availDatePassed, setAvailDatePassed] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
     Promise.all([
       getCODashboardStats(user.id),
       getMyCOApplications(user.id),
-    ]).then(([statsRes, appsRes]) => {
+      getCOProfile(user.id),
+    ]).then(([statsRes, appsRes, profileRes]) => {
       setStats(statsRes);
       setRecentApps((appsRes.data || []).slice(0, 4));
+
+      const p = profileRes.data;
+      if (!p?.employment_availability_status) {
+        setAvailStatus(false);
+      } else {
+        setAvailStatus(p.employment_availability_status);
+        // Check if available_from_date has passed
+        if (p.available_from_date && !p.available_from_immediately) {
+          const d = new Date(String(p.available_from_date) + 'T00:00:00');
+          const now = new Date();
+          // Check if the month has passed (compare year+month)
+          if (d.getFullYear() < now.getFullYear() ||
+              (d.getFullYear() === now.getFullYear() && d.getMonth() < now.getMonth())) {
+            setAvailDatePassed(true);
+          }
+        }
+      }
     }).finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -34,6 +54,33 @@ export default function CODashboard() {
       subtitle={t('co.activity')}
       action={<Button to="/co/shifts"><Search className="w-4 h-4" />{t('co.browse_shifts')}</Button>}
     >
+      {/* Employment availability prompts */}
+      {!loading && availStatus === false && (
+        <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4">
+          <Briefcase className="w-5 h-5 text-blue-500 shrink-0" />
+          <p className="text-sm text-blue-800 flex-1">
+            <span className="font-semibold">Let facilities know if you're open to full-time work.</span>
+            {' '}Update your availability to appear in permanent hire searches.
+          </p>
+          <Link to="/co/profile" className="text-sm font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap">
+            Update →
+          </Link>
+        </div>
+      )}
+
+      {!loading && availDatePassed && (
+        <div className="mb-6 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <p className="text-sm text-amber-800 flex-1">
+            <span className="font-semibold">Your availability date has passed.</span>
+            {' '}Please update your employment availability so facilities see accurate information.
+          </p>
+          <Link to="/co/profile" className="text-sm font-semibold text-amber-600 hover:text-amber-700 whitespace-nowrap">
+            Update →
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)

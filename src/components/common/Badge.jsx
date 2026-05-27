@@ -52,6 +52,33 @@ const fallbackLabels = {
   no_show:                   'No Show',
 };
 
+// ── Employment Availability Badge ─────────────────────────────────
+
+const AVAIL_CONFIG = {
+  open_fulltime: {
+    label: 'Open to full-time roles',
+    style: 'bg-green-50 text-green-700 ring-1 ring-green-200',
+    dot:   'bg-green-500',
+  },
+  open_parttime: {
+    label: 'Open to part-time permanent',
+    style: 'bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200',
+    dot:   'bg-yellow-500',
+  },
+};
+
+/** Renders a green or yellow availability badge. Returns null for not_looking / null. */
+export function AvailabilityBadge({ status, className = '' }) {
+  const cfg = AVAIL_CONFIG[status];
+  if (!cfg) return null;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${cfg.style} ${className}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
 export function Badge({ status, className = '' }) {
   const { t } = useTranslation();
   const label = fallbackLabels[status] ?? t(`status.${status}`, { defaultValue: status });

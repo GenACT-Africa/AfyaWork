@@ -33,6 +33,7 @@ export function NavBar() {
     { to: '/facility/dashboard',  label: t('nav.dashboard') },
     { to: '/facility/post-shift', label: t('nav.post_shift') },
     { to: '/facility/shifts',     label: t('nav.my_shifts') },
+    { to: '/facility/browse-cos', label: 'Find COs' },
     { to: '/facility/profile',    label: t('nav.profile') },
   ];
 

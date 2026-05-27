@@ -17,6 +17,7 @@ import PostShift from './pages/facility/PostShift';
 import ManageShifts from './pages/facility/ManageShifts';
 import ShiftDetail from './pages/facility/ShiftDetail';
 import FacilityProfile from './pages/facility/Profile';
+import BrowseCOs from './pages/facility/BrowseCOs';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminFacilities from './pages/admin/Facilities';
@@ -48,6 +49,7 @@ function AppShell() {
         <Route path="/facility/post-shift" element={<RequireFacility><PostShift /></RequireFacility>} />
         <Route path="/facility/shifts" element={<RequireFacility><ManageShifts /></RequireFacility>} />
         <Route path="/facility/shifts/:id" element={<RequireFacility><ShiftDetail /></RequireFacility>} />
+        <Route path="/facility/browse-cos" element={<RequireFacility><BrowseCOs /></RequireFacility>} />
         <Route path="/facility/profile" element={<RequireFacility><FacilityProfile /></RequireFacility>} />
 
         <Route path="/admin/dashboard"  element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />

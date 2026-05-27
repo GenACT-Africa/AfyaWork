@@ -548,6 +548,64 @@ export async function adminCreateWorker({ email, display_name, license_number, s
   return { data: result, error: null };
 }
 
+// ── Feature 3: Employment Availability ──────────────────────────
+
+/**
+ * Update a CO's employment availability fields.
+ * Pass available_from_date as "YYYY-MM" (month picker value) — we convert to
+ * the first of that month before saving.
+ */
+export async function updateCOEmploymentAvailability(userId, data) {
+  const payload = { ...data, availability_last_updated_at: new Date().toISOString() };
+  // Normalise month-picker value ("2026-09") → first-of-month date ("2026-09-01")
+  if (payload.available_from_date && payload.available_from_date.length === 7) {
+    payload.available_from_date = payload.available_from_date + '-01';
+  }
+  // Clear fields that don't apply when not looking
+  if (payload.employment_availability_status === 'not_looking') {
+    payload.available_from_immediately  = false;
+    payload.available_from_date         = null;
+    payload.preferred_location          = null;
+    payload.preferred_location_text     = null;
+  }
+  if (payload.preferred_location !== 'specific_region') {
+    payload.preferred_location_text = null;
+  }
+  return supabase.from('co_profiles').update(payload).eq('user_id', userId);
+}
+
+/**
+ * Search COs who are open to employment.
+ * filters: { status?: 'open_fulltime'|'open_parttime', immediately?: boolean, available_by?: 'YYYY-MM-DD' }
+ */
+export async function searchCOsByAvailability(filters = {}) {
+  let query = supabase
+    .from('co_profiles')
+    .select(`
+      user_id, specialization, verified, subscription_tier,
+      employment_availability_status, available_from_immediately, available_from_date,
+      preferred_location, preferred_location_text, current_employment_status,
+      availability_note, availability_last_updated_at,
+      users(display_name, avatar_url, bio)
+    `)
+    .in('employment_availability_status', ['open_fulltime', 'open_parttime']);
+
+  if (filters.status) {
+    query = query.eq('employment_availability_status', filters.status);
+  }
+  if (filters.immediately) {
+    query = query.eq('available_from_immediately', true);
+  }
+  if (filters.available_by) {
+    // COs available on or before this date
+    query = query.or(
+      `available_from_immediately.eq.true,available_from_date.lte.${filters.available_by}`
+    );
+  }
+
+  return query.order('availability_last_updated_at', { ascending: false, nullsFirst: false });
+}
+
 export async function adminResendInvite(userId) {
   const { data: result, error } = await supabase.rpc('admin_resend_invite', {
     p_user_id: userId,
