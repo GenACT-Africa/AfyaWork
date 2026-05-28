@@ -111,10 +111,14 @@ const [shifts, setShifts] = useState([]);
       </nav>
 
       {/* ── HERO ── */}
-      <section className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 text-white overflow-hidden">
-        {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-emerald-500/10 rounded-full translate-y-1/2 blur-3xl" />
+      <section className="relative text-white overflow-hidden">
+        {/* Background image */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('/afyaworkbg.png')" }}
+        />
+        {/* Dark overlay to keep text readable */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 via-slate-800/80 to-teal-900/75" />
 
         <div className="relative max-w-6xl mx-auto px-4 py-20 md:py-28">
           <div className="max-w-2xl">
