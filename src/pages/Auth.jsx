@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Stethoscope } from 'lucide-react';
+import { Stethoscope, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
@@ -75,6 +75,16 @@ export function RegisterPage() {
           </button>
         ))}
       </div>
+
+      {role === 'co' && (
+        <div className="flex items-start gap-2.5 bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 mb-4 text-sm text-teal-800">
+          <Info className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
+          <p>
+            AfyaWork is currently open to <span className="font-semibold">Clinical Officers</span> only.
+            We'll be welcoming other healthcare cadres very soon — stay tuned!
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {role === 'co' ? (
