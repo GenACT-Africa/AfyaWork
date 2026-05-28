@@ -228,7 +228,6 @@ export default function AdminWorkers() {
             <tbody className="divide-y divide-gray-50">
               {filtered.map((w) => {
                 const acctStatus = w.users?.account_status || 'active';
-                const isPending = acctStatus === 'pending_invite' || acctStatus === 'expired';
                 return (
                   <tr key={w.user_id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-4">
@@ -272,16 +271,14 @@ export default function AdminWorkers() {
                     <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(w.users?.created_at)}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1 justify-end">
-                        {isPending && (
-                          <button
-                            onClick={() => handleResend(w)}
-                            disabled={resendingId === w.user_id}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                            title="Resend invite"
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleResend(w)}
+                          disabled={resendingId === w.user_id}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                          title="Resend invite"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => openEdit(w)}
                           className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
