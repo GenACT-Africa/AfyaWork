@@ -122,10 +122,6 @@ const [shifts, setShifts] = useState([]);
 
         <div className="relative max-w-6xl mx-auto px-4 py-20 md:py-28">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 text-teal-300 text-xs font-semibold px-4 py-2 rounded-full mb-6">
-              <span className="w-2 h-2 bg-teal-400 rounded-full animate-pulse" />
-              {t('landing.badge')}
-            </div>
             <h1 className="text-4xl md:text-6xl font-extrabold leading-tight mb-5 tracking-tight">
               {t('landing.hero_title').split('\n').map((line, i) => (
                 <span key={i}>{i > 0 && <br />}{i === 0 ? line : <span className="text-teal-400">{line}</span>}</span>
