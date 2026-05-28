@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Stethoscope, Info } from 'lucide-react';
+import { Stethoscope, Info, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
@@ -25,6 +25,7 @@ export function RegisterPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [form, setForm] = useState({
     email: '', password: '', display_name: '', phone: '',
     license_number: '', specialization: '',
@@ -55,6 +56,32 @@ export function RegisterPage() {
     const { error: err } = await signUp(payload);
     setLoading(false);
     if (err) { setError(err.message); return; }
+    setSuccess(true);
+  }
+
+  if (success) {
+    return (
+      <AuthShell title="Check your inbox" subtitle="One last step">
+        <div className="flex flex-col items-center text-center py-4">
+          <div className="w-16 h-16 bg-teal-50 border border-teal-100 rounded-2xl flex items-center justify-center mb-5">
+            <Mail className="w-8 h-8 text-teal-500" />
+          </div>
+          <p className="text-gray-700 text-sm leading-relaxed mb-2">
+            We've sent a confirmation link to <span className="font-semibold text-gray-900">{form.email}</span>.
+          </p>
+          <p className="text-gray-500 text-sm leading-relaxed mb-6">
+            Click the link in the email to activate your account and go straight to your dashboard.
+            The link expires in 24 hours.
+          </p>
+          <p className="text-xs text-gray-400">
+            Didn't receive it? Check your spam folder or{' '}
+            <button onClick={() => setSuccess(false)} className="text-teal-600 font-semibold hover:underline">
+              try again
+            </button>.
+          </p>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (

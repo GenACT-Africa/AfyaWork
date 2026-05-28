@@ -54,6 +54,7 @@ export function AuthProvider({ children }) {
       password,
       options: {
         data: { role, display_name, ...profileData },
+        emailRedirectTo: `${window.location.origin}/auth/confirmed`,
       },
     });
     return { data, error };

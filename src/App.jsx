@@ -29,6 +29,7 @@ import COPayments from './pages/co/Payments';
 
 import InviteSetup from './pages/InviteSetup';
 import InvitePending from './pages/InvitePending';
+import AuthConfirmed from './pages/AuthConfirmed';
 
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
@@ -42,6 +43,7 @@ function AppShell() {
         <Route path="/" element={<Landing />} />
         <Route path="/auth/register" element={<RegisterPage />} />
         <Route path="/auth/login" element={<LoginPage />} />
+        <Route path="/auth/confirmed" element={<AuthConfirmed />} />
 
         <Route path="/co/dashboard" element={<RequireCO><CODashboard /></RequireCO>} />
         <Route path="/co/shifts" element={<RequireCO><BrowseShifts /></RequireCO>} />
