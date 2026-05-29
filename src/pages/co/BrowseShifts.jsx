@@ -8,6 +8,8 @@ import { Button } from '../../components/common/Button';
 import { ShiftCardSkeleton } from '../../components/common/Skeleton';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
+import { useICA } from '../../components/legal/ICAGate';
+import { FileText } from 'lucide-react';
 
 const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-6AM)', '24-Hour', 'Weekend'];
 
@@ -15,6 +17,7 @@ export default function BrowseShifts() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const { show, ToastComponent } = useToast();
+  const { signed: icaSigned } = useICA();
   const [shifts, setShifts] = useState([]);
   const [appliedIds, setAppliedIds] = useState(new Set());
   const [applying, setApplying] = useState(null);
@@ -35,6 +38,10 @@ export default function BrowseShifts() {
   useEffect(() => { loadData(); }, [loadData]);
 
   async function handleApply(shiftId) {
+    if (!icaSigned) {
+      show('Please sign your Independent Contractor Agreement before applying. Go to Profile → Legal & Contracts.', 'error');
+      return;
+    }
     setApplying(shiftId);
     const { error } = await applyToShift(shiftId, user.id);
     setApplying(null);
@@ -48,6 +55,20 @@ export default function BrowseShifts() {
   return (
     <PageWrapper title={t('co.browse_title')} subtitle={t('co.browse_sub')}>
       {ToastComponent}
+
+      {/* ICA unsigned warning banner */}
+      {!icaSigned && (
+        <div className="flex items-center gap-3 mb-6 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+          <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+          <p className="text-sm text-amber-800 flex-1">
+            <span className="font-semibold">Sign your Contractor Agreement to apply for shifts.</span>
+            {' '}You can browse, but applications are locked until you sign.
+          </p>
+          <a href="/co/profile" className="text-sm font-semibold text-amber-700 hover:text-amber-800 whitespace-nowrap underline">
+            Sign now →
+          </a>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
         <Filter className="w-4 h-4 text-gray-400 shrink-0" />

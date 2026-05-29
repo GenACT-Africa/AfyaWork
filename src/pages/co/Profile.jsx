@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Stethoscope, Star, Zap, Briefcase, Pencil, X, MapPin, Calendar, Clock, Smartphone, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Camera, Stethoscope, Star, Zap, Briefcase, Pencil, X, MapPin, Calendar, Clock, Smartphone, AlertTriangle, CheckCircle2, FileText, Download, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getCOProfile, updateCOProfile, updateUserProfile, uploadAvatar, updateCOEmploymentAvailability, getCOMobileMoneyProfile, upsertCOMobileMoneyProfile } from '../../lib/api';
+import { getCOProfile, updateCOProfile, updateUserProfile, uploadAvatar, updateCOEmploymentAvailability, getCOMobileMoneyProfile, upsertCOMobileMoneyProfile, signICA } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge, AvailabilityBadge } from '../../components/common/Badge';
@@ -9,6 +9,7 @@ import { Button } from '../../components/common/Button';
 import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
+import { useICA } from '../../components/legal/ICAGate';
 
 const TIERS = [
   { key: 'msingi', label: 'Msingi (Free)', price: 'TZS 0/mo', desc: 'Standard matching — shifts visible 30 min after paid tiers', icon: Stethoscope },
@@ -98,6 +99,7 @@ function minMonth() {
 export default function COProfile() {
   const { user, refreshUser } = useAuth();
   const { show, ToastComponent } = useToast();
+  const { signed: icaSigned, refresh: refreshICA } = useICA();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,6 +113,23 @@ export default function COProfile() {
   const [mmForm, setMmForm]         = useState({ mobile_money_provider: '', mobile_money_number: '', account_name: '' });
   const [mmSaving, setMmSaving]     = useState(false);
   const [mmMismatch, setMmMismatch] = useState(false);
+
+  // ICA sign modal
+  const [icaModal, setIcaModal]   = useState(false);
+  const [icaAgreed, setIcaAgreed] = useState(false);
+  const [icaSigning, setIcaSigning] = useState(false);
+
+  async function handleSignICA() {
+    if (!icaAgreed) return;
+    setIcaSigning(true);
+    const { error } = await signICA(user.id);
+    setIcaSigning(false);
+    if (error) { show('Could not record signature. Please try again.', 'error'); return; }
+    setIcaModal(false);
+    setIcaAgreed(false);
+    refreshICA();
+    show('Contractor Agreement signed successfully!');
+  }
 
   // Availability modal
   const [availModal, setAvailModal] = useState(false);
@@ -735,6 +754,86 @@ export default function COProfile() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Legal & Contracts ─────────────────────────────────────────── */}
+      <div className="mt-8">
+        <h2 className="text-lg font-bold text-gray-900 mb-4">Legal &amp; Contracts</h2>
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${icaSigned ? 'bg-green-50 border border-green-100' : 'bg-amber-50 border border-amber-100'}`}>
+              {icaSigned ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <FileText className="w-5 h-5 text-amber-500" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900">Independent Contractor Agreement</p>
+              {icaSigned ? (
+                <p className="text-sm text-green-700 mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Signed — you are authorised to work shifts on AfyaWork
+                </p>
+              ) : (
+                <p className="text-sm text-amber-700 mt-0.5">Not yet signed — required before applying for shifts</p>
+              )}
+            </div>
+            {icaSigned ? (
+              <a href="/AfyaWork_Independent_Contractor_Agreement.pdf" download="AfyaWork_Independent_Contractor_Agreement.pdf"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-teal-600 border border-teal-200 hover:bg-teal-50 transition-colors shrink-0">
+                <Download className="w-4 h-4" /> Download Agreement
+              </a>
+            ) : (
+              <button onClick={() => setIcaModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-700 hover:to-teal-600 shadow-sm transition-all shrink-0">
+                <FileText className="w-4 h-4" /> Sign Contract
+              </button>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* ICA sign modal */}
+      {icaModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+              <div className="w-10 h-10 bg-teal-50 border border-teal-100 rounded-xl flex items-center justify-center">
+                <FileText className="w-5 h-5 text-teal-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-gray-900">Independent Contractor Agreement</h2>
+                <p className="text-xs text-gray-400">Please read before signing</p>
+              </div>
+              <button onClick={() => { setIcaModal(false); setIcaAgreed(false); }} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden bg-gray-100">
+              <iframe src="/AfyaWork_Independent_Contractor_Agreement.pdf" className="w-full h-full min-h-[420px]" title="ICA" />
+            </div>
+            <div className="px-6 py-5 border-t border-gray-100 bg-gray-50 shrink-0 space-y-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={icaAgreed} onChange={(e) => setIcaAgreed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0" />
+                <span className="text-sm text-gray-700 leading-relaxed">
+                  I have read, understood, and agree to the terms of the{' '}
+                  <span className="font-semibold text-gray-900">AfyaWork Independent Contractor Agreement</span>.
+                  My electronic acceptance constitutes a legally binding signature.
+                </span>
+              </label>
+              <div className="flex items-center gap-3 justify-end">
+                <a href="/AfyaWork_Independent_Contractor_Agreement.pdf" target="_blank" rel="noopener noreferrer"
+                  className="text-sm text-teal-600 font-semibold hover:underline">Open in new tab ↗</a>
+                <button onClick={handleSignICA} disabled={!icaAgreed || icaSigning}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                    icaAgreed && !icaSigning
+                      ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-700 hover:to-teal-600 shadow-sm'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                  {icaSigning
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing…</>
+                    : <><CheckCircle2 className="w-4 h-4" />Sign Agreement</>}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
