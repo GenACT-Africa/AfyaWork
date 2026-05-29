@@ -1154,3 +1154,9 @@ export async function getFacilityDashboardStats(facilityId) {
     pendingApplicants,
   };
 }
+
+// ── Beta Feedback ─────────────────────────────────────────────────────────────
+
+export async function submitFeedback(userId, payload) {
+  return supabase.from('beta_feedback').insert({ user_id: userId, ...payload });
+}

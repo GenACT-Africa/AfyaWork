@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, Stethoscope, LogOut, Bell, CheckCheck } from 'lucide-react';
+import { Menu, X, Stethoscope, LogOut, Bell, CheckCheck, MessageSquarePlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { LanguageToggle } from '../common/LanguageToggle';
@@ -207,6 +207,14 @@ export function NavBar() {
             )}
 
             <div className="h-5 w-px bg-gray-200" />
+            <Link
+              to="/feedback"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+              title="Share beta feedback"
+            >
+              <MessageSquarePlus className="w-3.5 h-3.5" /> Beta Feedback
+            </Link>
+            <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-2">
               <Avatar src={user.avatar_url} name={user.display_name || user.email} size="sm" />
               <span className="text-sm text-gray-600 max-w-[130px] truncate font-medium">
@@ -312,10 +320,18 @@ export function NavBar() {
               })}
             </div>
 
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+            <div className="mt-3 pt-3 border-t border-gray-100 space-y-0.5">
+              <Link
+                to="/feedback"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-teal-700 hover:bg-teal-50 rounded-xl transition-colors"
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+                Beta Feedback
+              </Link>
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 {t('nav.sign_out')}

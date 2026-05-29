@@ -31,11 +31,12 @@ import InviteSetup from './pages/InviteSetup';
 import InvitePending from './pages/InvitePending';
 import AuthConfirmed from './pages/AuthConfirmed';
 import ICAGate from './components/legal/ICAGate';
+import FeedbackPage from './pages/Feedback';
 
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
   const { pathname } = useLocation();
-  const showNav = pathname !== '/' && !pathname.startsWith('/auth') && !pathname.startsWith('/invite');
+  const showNav = pathname !== '/' && !pathname.startsWith('/auth') && !pathname.startsWith('/invite') && pathname !== '/feedback';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -67,6 +68,7 @@ function AppShell() {
         <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
 
         {/* Invite flow — no auth guard, no NavBar */}
+        <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="/invite/setup"   element={<InviteSetup />} />
         <Route path="/invite/pending" element={<InvitePending />} />
 
