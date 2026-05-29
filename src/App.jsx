@@ -30,6 +30,7 @@ import COPayments from './pages/co/Payments';
 import InviteSetup from './pages/InviteSetup';
 import InvitePending from './pages/InvitePending';
 import AuthConfirmed from './pages/AuthConfirmed';
+import ICAGate from './components/legal/ICAGate';
 
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
@@ -45,11 +46,11 @@ function AppShell() {
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/confirmed" element={<AuthConfirmed />} />
 
-        <Route path="/co/dashboard" element={<RequireCO><CODashboard /></RequireCO>} />
-        <Route path="/co/shifts" element={<RequireCO><BrowseShifts /></RequireCO>} />
-        <Route path="/co/applications" element={<RequireCO><MyApplications /></RequireCO>} />
-        <Route path="/co/profile"   element={<RequireCO><COProfile /></RequireCO>} />
-        <Route path="/co/payments"  element={<RequireCO><COPayments /></RequireCO>} />
+        <Route path="/co/dashboard" element={<RequireCO><ICAGate><CODashboard /></ICAGate></RequireCO>} />
+        <Route path="/co/shifts" element={<RequireCO><ICAGate><BrowseShifts /></ICAGate></RequireCO>} />
+        <Route path="/co/applications" element={<RequireCO><ICAGate><MyApplications /></ICAGate></RequireCO>} />
+        <Route path="/co/profile"   element={<RequireCO><ICAGate><COProfile /></ICAGate></RequireCO>} />
+        <Route path="/co/payments"  element={<RequireCO><ICAGate><COPayments /></ICAGate></RequireCO>} />
 
         <Route path="/facility/dashboard" element={<RequireFacility><FacilityDashboard /></RequireFacility>} />
         <Route path="/facility/post-shift" element={<RequireFacility><PostShift /></RequireFacility>} />

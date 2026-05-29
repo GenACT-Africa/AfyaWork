@@ -443,6 +443,34 @@ export async function updateUserProfile(userId, updates) {
   return supabase.from('users').update(updates).eq('id', userId);
 }
 
+// ── Legal agreements ──────────────────────────────────────────────────────────
+
+/** Record that the user agreed to the Terms of Service at signup. */
+export async function recordTosAgreement(userId) {
+  return supabase
+    .from('users')
+    .update({ tos_agreed_at: new Date().toISOString() })
+    .eq('id', userId);
+}
+
+/** Record that the CO signed the Independent Contractor Agreement. */
+export async function signICA(userId) {
+  return supabase
+    .from('co_profiles')
+    .update({ ica_signed_at: new Date().toISOString() })
+    .eq('user_id', userId);
+}
+
+/** Check if the CO has signed the ICA. Returns { signed: bool, error }. */
+export async function getCOICAStatus(userId) {
+  const { data, error } = await supabase
+    .from('co_profiles')
+    .select('ica_signed_at')
+    .eq('user_id', userId)
+    .single();
+  return { signed: !!data?.ica_signed_at, error };
+}
+
 /**
  * Upload a profile picture to Supabase Storage and update avatar_url in public.users.
  * Returns { url, error }.

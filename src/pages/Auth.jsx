@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
 import { LanguageToggle } from '../components/common/LanguageToggle';
+import { recordTosAgreement } from '../lib/api';
 
 export function RegisterPage() {
   const [params] = useSearchParams();
@@ -26,6 +27,7 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [tosAgreed, setTosAgreed] = useState(false);
   const [form, setForm] = useState({
     email: '', password: '', display_name: '', phone: '',
     license_number: '', specialization: '',
@@ -43,6 +45,8 @@ export function RegisterPage() {
     if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
     if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
 
+    if (!tosAgreed) { setError('You must agree to the Terms of Service and Privacy Policy to continue.'); return; }
+
     setLoading(true);
     const payload = {
       email: form.email,
@@ -53,9 +57,13 @@ export function RegisterPage() {
         ? { license_number: form.license_number, specialization: form.specialization }
         : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address }),
     };
-    const { error: err } = await signUp(payload);
+    const { data, error: err } = await signUp(payload);
+    if (err) { setLoading(false); setError(err.message); return; }
+
+    // Record ToS agreement timestamp
+    if (data?.user?.id) await recordTosAgreement(data.user.id);
+
     setLoading(false);
-    if (err) { setError(err.message); return; }
     setSuccess(true);
   }
 
@@ -147,13 +155,42 @@ export function RegisterPage() {
           </>
         )}
 
+        {/* Terms of Service agreement */}
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            checked={tosAgreed}
+            onChange={(e) => setTosAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0"
+          />
+          <span className="text-sm text-gray-600 leading-relaxed">
+            I have read and agree to the{' '}
+            <a
+              href={role === 'co' ? '/AfyaWork_CO_Terms_of_Service.pdf' : '/AfyaWork_Facility_Terms_of_Service.pdf'}
+              target="_blank" rel="noopener noreferrer"
+              className="text-teal-600 font-semibold hover:underline"
+            >Terms of Service</a>
+            {' '}and the{' '}
+            <a
+              href="/AfyaWork_Privacy_Policy.pdf"
+              target="_blank" rel="noopener noreferrer"
+              className="text-teal-600 font-semibold hover:underline"
+            >Privacy Policy</a>.
+            {role === 'co' && (
+              <span className="block text-gray-400 text-xs mt-1">
+                Note: An Independent Contractor Agreement must also be signed before your first shift.
+              </span>
+            )}
+          </span>
+        </label>
+
         {error && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
             {error}
           </div>
         )}
 
-        <Button type="submit" loading={loading} className="w-full" size="lg">
+        <Button type="submit" loading={loading} disabled={!tosAgreed} className="w-full" size="lg">
           {t('auth.create_btn')}
         </Button>
       </form>
