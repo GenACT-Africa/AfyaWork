@@ -7,7 +7,11 @@ const FEE_RATE = parseFloat(import.meta.env.VITE_PLATFORM_FEE_RATE || '0.186');
  * Fire-and-forget WhatsApp notification.
  * Never throws — WA messages are best-effort and must not block the UI.
  */
+// WhatsApp via Twilio is off unless VITE_WHATSAPP_ENABLED=true (push notifications replace it)
+const WHATSAPP_ENABLED = import.meta.env.VITE_WHATSAPP_ENABLED === 'true';
+
 function wa(event, shiftId = null, extra = {}) {
+  if (!WHATSAPP_ENABLED) return;
   supabase.functions
     .invoke('send-whatsapp', { body: { event, shift_id: shiftId, ...extra } })
     .catch((e) => console.warn('WA notification skipped:', e?.message));
@@ -1101,13 +1105,13 @@ export async function resolveDisputePayment(shiftId, resolution, adminNote = nul
     // Recalculate pay based on admin-approved hours
     const { data: payment } = await supabase
       .from('shift_payments')
-      .select('flat_shift_rate, overtime_rate_applied')
+      .select('flat_shift_rate, overtime_rate_applied, scheduled_shift_duration_minutes')
       .eq('shift_id', shiftId)
       .maybeSingle();
 
     if (payment) {
       const overtimeRate = payment.overtime_rate_applied || 5000;
-      const scheduledMins = 480; // fallback
+      const scheduledMins = payment.scheduled_shift_duration_minutes || 480; // 1440 for 24-hour shifts
       let adjustedPay = payment.flat_shift_rate;
       const OVERTIME_THRESHOLD = 60;
       if (adminNote.approved_minutes - scheduledMins >= OVERTIME_THRESHOLD) {

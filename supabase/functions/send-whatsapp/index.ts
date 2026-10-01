@@ -37,6 +37,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { isServiceCall, getCaller, deny } from '../_shared/auth.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // ── Credentials & config ──────────────────────────────────────────────────────
@@ -110,6 +111,25 @@ serve(async (req) => {
     const { event, shift_id } = body;
 
     if (!event) return err('Missing event');
+
+    // ── Who may trigger what ───────────────────────────────────────
+    // Service role (DB trigger, other functions) and admins: any event.
+    // Signed-in users: only shift-lifecycle events for a shift they are on.
+    // Recipients and wording always come from the database, never the request.
+    if (!isServiceCall(req)) {
+      const caller = await getCaller(req);
+      if (!caller) return deny(401, 'Sign in required');
+      if (caller.role !== 'admin') {
+        if (!shift_id || ['invite', 'payment_disbursed', 'payment_failed_admin', 'dispute_resolved'].includes(event)) {
+          return deny(403, 'Not allowed');
+        }
+        const { data: s } = await db.from('shifts')
+          .select('facility_id, assigned_co_id').eq('id', shift_id).single();
+        if (!s || (s.facility_id !== caller.id && s.assigned_co_id !== caller.id)) {
+          return deny(403, 'Not your shift');
+        }
+      }
+    }
 
     // ── Events that don't need shift_id ────────────────────────────
     if (event === 'invite') {

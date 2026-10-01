@@ -22,6 +22,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { safeEqual } from '../_shared/auth.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -38,6 +39,16 @@ const WEBHOOK_SECRET = Deno.env.get('SELCOM_WEBHOOK_SECRET') ?? '';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  // ── Authenticate the callback (fail closed) ─────────────────────
+  // Register the callback URL with Selcom as
+  //   https://<project>.functions.supabase.co/selcom-webhook?secret=<SELCOM_WEBHOOK_SECRET>
+  // or send the secret in an X-Webhook-Secret header. Replace/extend this with
+  // Selcom's official signature check once you have their callback spec.
+  const given = new URL(req.url).searchParams.get('secret') ?? req.headers.get('x-webhook-secret') ?? '';
+  if (!WEBHOOK_SECRET || !safeEqual(given, WEBHOOK_SECRET)) {
+    return new Response('Unauthorized', { status: 401 });
+  }
 
   try {
     const body = await req.json() as Record<string, unknown>;

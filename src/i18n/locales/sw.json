@@ -186,5 +186,17 @@
     "platform": "AfyaWork",
     "tagline": "Jukwaa la Wafanyakazi wa Afya",
     "license": "Leseni"
+  },
+  "push": {
+    "title": "Pata taarifa za zamu kwenye simu yako",
+    "body_co": "Kuwa wa kwanza kujua kuhusu zamu mpya, ofa na malipo — hata AfyaWork ikiwa imefungwa.",
+    "body_facility": "Jua mara moja Matabibu wanapoomba, kukubali au kuingia kazini — hata AfyaWork ikiwa imefungwa.",
+    "enable": "Washa arifa",
+    "not_now": "Si sasa",
+    "enabled": "Arifa zimewashwa kwenye kifaa hiki.",
+    "denied": "Arifa zimezuiwa. Ziruhusu kwa AfyaWork kwenye mipangilio ya kivinjari chako, kisha jaribu tena.",
+    "failed": "Imeshindikana kuwasha arifa. Tafadhali jaribu tena.",
+    "install_title": "Weka AfyaWork kwenye Skrini ya Mwanzo",
+    "install_body": "Kwenye iPhone, gusa Shiriki, kisha “Ongeza kwenye Skrini ya Mwanzo”. Fungua AfyaWork kutoka Skrini ya Mwanzo ili kuwasha arifa."
   }
 }

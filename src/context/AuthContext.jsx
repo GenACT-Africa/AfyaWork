@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { detachPushSubscription } from '../lib/push';
 
 const AuthContext = createContext(null);
 
@@ -65,6 +66,8 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    // Stop this device receiving the user's notifications (shared phones)
+    await detachPushSubscription();
     await supabase.auth.signOut();
     setUser(null);
     setRole(null);

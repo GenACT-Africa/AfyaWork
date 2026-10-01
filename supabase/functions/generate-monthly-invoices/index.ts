@@ -18,6 +18,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { requireAdminOrService } from '../_shared/auth.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -32,6 +33,9 @@ const db = createClient(
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  const denied = await requireAdminOrService(req);
+  if (denied) return denied;
 
   try {
     const body = await req.json().catch(() => ({})) as { year?: number; month?: number };

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NavBar } from './components/layout/NavBar';
+import { PushPrompt } from './components/common/PushPrompt';
 import { RequireCO, RequireFacility, RequireAdmin } from './components/layout/RouteGuard';
 
 import Landing from './pages/Landing';
@@ -41,6 +42,7 @@ function AppShell() {
   return (
     <div className="min-h-screen bg-gray-50">
       {showNav && <NavBar />}
+      {showNav && <PushPrompt />}
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/auth/register" element={<RegisterPage />} />

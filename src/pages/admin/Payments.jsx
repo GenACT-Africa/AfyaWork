@@ -742,19 +742,20 @@ function ConfigTab() {
           </div>
           <div>
             <Input
-              label="Platform Fee per Shift (TZS)"
+              label="Platform Fee Rate (fraction of CO pay, e.g. 0.186 = 18.6%)"
               type="number"
-              value={config.platform_fee_per_shift ?? ''}
-              onChange={setField('platform_fee_per_shift')}
+              step="0.001"
+              value={config.platform_fee_rate ?? ''}
+              onChange={setField('platform_fee_rate')}
             />
-            <p className="text-xs text-gray-400 mt-1">Added to facility invoice — not shown to CO</p>
+            <p className="text-xs text-gray-400 mt-1">Added to facility invoice — keep in sync with VITE_PLATFORM_FEE_RATE (the Post Shift quote)</p>
           </div>
         </div>
         <div className="mt-4">
           <Button
             size="sm"
             loading={saving === 'bulk'}
-            onClick={() => saveMultiple(['platform_overtime_hourly_rate', 'platform_fee_per_shift'])}
+            onClick={() => saveMultiple(['platform_overtime_hourly_rate', 'platform_fee_rate'])}
           >
             <Save className="w-4 h-4" /> Save Rates
           </Button>

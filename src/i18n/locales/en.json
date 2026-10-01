@@ -186,5 +186,17 @@
     "platform": "AfyaWork",
     "tagline": "Healthcare Workforce Platform",
     "license": "License"
+  },
+  "push": {
+    "title": "Get shift alerts on your phone",
+    "body_co": "Be the first to know about new shifts, offers and payments — even when AfyaWork is closed.",
+    "body_facility": "Know right away when Clinical Officers apply, accept or check in — even when AfyaWork is closed.",
+    "enable": "Turn on notifications",
+    "not_now": "Not now",
+    "enabled": "Notifications are on for this device.",
+    "denied": "Notifications are blocked. Allow them for AfyaWork in your browser settings, then try again.",
+    "failed": "Couldn't turn on notifications. Please try again.",
+    "install_title": "Add AfyaWork to your Home Screen",
+    "install_body": "On iPhone, tap Share, then “Add to Home Screen”. Open AfyaWork from your Home Screen to turn on notifications."
   }
 }

@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { requireAdminOrService } from '../_shared/auth.ts';
 
 const RESEND_API_KEY  = Deno.env.get('RESEND_API_KEY')!;
 const APP_URL         = Deno.env.get('APP_URL') ?? 'https://afyawork.com';
@@ -15,6 +16,9 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS });
   }
+
+  const denied = await requireAdminOrService(req);
+  if (denied) return denied;
 
   try {
     const { email, display_name, role, invite_token, facility_name, is_resend } =

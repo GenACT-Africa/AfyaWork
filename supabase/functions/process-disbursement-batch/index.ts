@@ -18,6 +18,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { requireAdminOrService } from '../_shared/auth.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -144,7 +145,7 @@ async function callSelcomDisbursement(
 
   // ⚠️  Map Selcom response codes per official documentation.
   const code        = String(rawResponse.resultcode ?? rawResponse.code ?? '');
-  const description = String(rawResponse.resultdescription ?? rawResponse.description ?? '');
+  const respDescription = String(rawResponse.resultdescription ?? rawResponse.description ?? '');
   const txRef       = String(rawResponse.transid ?? rawResponse.transaction_id ?? '');
 
   const isSuccess = ['0', '00', 'SUCCESS'].includes(code.toUpperCase());
@@ -154,7 +155,7 @@ async function callSelcomDisbursement(
     success:             isSuccess,
     transactionRef:      txRef || null,
     responseCode:        code,
-    responseDescription: description,
+    responseDescription: respDescription,
     rawResponse,
     isPending,
   };
@@ -163,6 +164,9 @@ async function callSelcomDisbursement(
 // ── Main handler ──────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  const denied = await requireAdminOrService(req);
+  if (denied) return denied;
 
   try {
     const now       = new Date();
@@ -209,10 +213,10 @@ serve(async (req) => {
     const batchId = batch.id as string;
 
     // ── Fetch scheduled payments ──────────────────────────────────
+    // Atomically claim every 'scheduled' payment for this batch (sets them to
+    // 'processing'), so two overlapping runs can never pay the same shift twice.
     const { data: payments, error: paymentsErr } = await db
-      .from('shift_payments')
-      .select('id, co_id, facility_id, shift_id, co_total_pay, adjusted_pay_amount, mobile_money_provider, mobile_money_number')
-      .eq('payment_status', 'scheduled');
+      .rpc('claim_scheduled_payments', { p_batch_id: batchId });
 
     if (paymentsErr) {
       return new Response(JSON.stringify({ error: paymentsErr.message }), {

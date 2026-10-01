@@ -17,7 +17,7 @@ serve(async (req) => {
 
     const { token, password } = await req.json();
     if (!token || !password) return err('Missing token or password');
-    if (password.length < 6) return err('Password must be at least 6 characters');
+    if (password.length < 8) return err('Password must be at least 8 characters');
 
     // ── Validate the invite token ───────────────────────────────
     const { data: validation, error: valError } = await supabase
@@ -32,10 +32,11 @@ serve(async (req) => {
     }
 
     // ── Look up user by invite token ────────────────────────────
+    // Tokens are stored hashed, so look the user up by the id validation returned
     const { data: userRow, error: fetchError } = await supabase
       .from('users')
       .select('id, email')
-      .eq('invite_token', token)
+      .eq('id', validation.user_id)
       .single();
 
     if (fetchError || !userRow) return err('User not found');
