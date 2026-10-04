@@ -122,7 +122,7 @@ const [shifts, setShifts] = useState([]);
 
         <div className="relative max-w-6xl mx-auto px-4 py-20 md:py-28">
           <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-6xl font-extrabold leading-tight mb-5 tracking-tight">
+            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight mb-5 tracking-tight">
               {t('landing.hero_title').split('\n').map((line, i) => (
                 <span key={i}>{i > 0 && <br />}{i === 0 ? line : <span className="text-teal-400">{line}</span>}</span>
               ))}
