@@ -25,6 +25,7 @@ import AdminFacilities from './pages/admin/Facilities';
 import AdminWorkers from './pages/admin/Workers';
 import AdminShifts from './pages/admin/Shifts';
 import AdminPayments from './pages/admin/Payments';
+import AdminFeedback from './pages/admin/Feedback';
 
 import COPayments from './pages/co/Payments';
 
@@ -67,6 +68,7 @@ function AppShell() {
         <Route path="/admin/workers"    element={<RequireAdmin><AdminWorkers /></RequireAdmin>} />
         <Route path="/admin/shifts"     element={<RequireAdmin><AdminShifts /></RequireAdmin>} />
         <Route path="/admin/payments"   element={<RequireAdmin><AdminPayments /></RequireAdmin>} />
+        <Route path="/admin/feedback"   element={<RequireAdmin><AdminFeedback /></RequireAdmin>} />
         <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
 
         {/* Invite flow — no auth guard, no NavBar */}

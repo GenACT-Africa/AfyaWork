@@ -1296,6 +1296,15 @@ export async function submitFeedback(userId, payload) {
   return supabase.from('beta_feedback').insert({ user_id: userId, ...payload });
 }
 
+/** Admin: every beta feedback submission, newest first, with the sender's account. */
+export async function getAdminFeedback() {
+  const { data, error } = await supabase
+    .from('beta_feedback')
+    .select('*, users(email, phone, display_name, role)')
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
 // ─── MCT licence verification (verify-co edge function) ────────────────────
 
 /** Admin: look up one CO on the MCT register now. */

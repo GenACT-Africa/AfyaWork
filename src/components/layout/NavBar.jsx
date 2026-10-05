@@ -44,6 +44,7 @@ export function NavBar() {
     { to: '/admin/workers',    label: t('nav.workers') },
     { to: '/admin/shifts',     label: t('nav.all_shifts') },
     { to: '/admin/payments',   label: 'Payments' },
+    { to: '/admin/feedback',   label: 'Feedback' },
   ];
 
   const links = role === 'admin' ? adminLinks : role === 'co' ? coLinks : facilityLinks;
