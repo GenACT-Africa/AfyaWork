@@ -1195,6 +1195,7 @@ export async function adminMarkInvoiceOverdue(invoiceId) {
     .eq('id', invoiceId);
 }
 
+/** month is 0-based (0 = January) — generate-monthly-invoices passes it straight to Date.UTC. */
 export async function adminTriggerInvoiceGeneration(year, month) {
   return supabase.functions.invoke('generate-monthly-invoices', { body: { year, month } });
 }

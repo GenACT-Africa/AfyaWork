@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Wallet, RefreshCw, CheckCircle2, Clock, AlertTriangle,
   TrendingUp, Settings, FileText, ChevronDown,
-  ChevronUp, Send, DollarSign, RotateCcw, X, Save,
+  ChevronUp, Send, DollarSign, RotateCcw, X, Save, Calendar,
 } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Button } from '../../components/common/Button';
@@ -446,9 +446,10 @@ function InvoicesTab() {
 
   async function load() {
     setLoading(true);
-    const { data } = await getAdminInvoices(filter !== 'all' ? { status: filter } : {});
+    const { data, error } = await getAdminInvoices(filter !== 'all' ? { status: filter } : {});
     setInvoices(data || []);
     setLoading(false);
+    if (error) show('Could not load invoices: ' + error.message, 'error');
   }
 
   useEffect(() => { load(); }, [filter]);
@@ -460,26 +461,29 @@ function InvoicesTab() {
     let y = now.getFullYear();
     if (m === 0) { m = 11; y -= 1; } else { m -= 1; }
     setGenerating(true);
-    const { error } = await adminTriggerInvoiceGeneration(y, m + 1); // 1-based
+    const { data, error } = await adminTriggerInvoiceGeneration(y, m); // 0-based, as the edge function expects
     setGenerating(false);
-    if (error) { show('Generation failed: ' + error.message, 'error'); return; }
-    show('Invoices generated and sent to facilities.');
+    if (error || data?.error) { show('Generation failed: ' + (error?.message || data.error), 'error'); return; }
+    const n = data?.invoices_created ?? 0;
+    show(n ? `${n} invoice${n === 1 ? '' : 's'} generated and sent to facilities.` : 'No new invoices — no completed shifts last month, or they were already invoiced.');
     load();
   }
 
   async function handleMarkSent(invoiceId) {
-    await adminMarkInvoiceSent(invoiceId);
+    const { error } = await adminMarkInvoiceSent(invoiceId);
+    if (error) { show('Could not mark as sent: ' + error.message, 'error'); return; }
     show('Invoice marked as sent.');
     load();
   }
 
   async function handleMarkPaid() {
     if (!payForm.amount) { show('Enter the amount received.', 'error'); return; }
-    await adminMarkInvoicePaid(markPaidId, {
+    const { error } = await adminMarkInvoicePaid(markPaidId, {
       amount:    parseInt(payForm.amount, 10),
       method:    payForm.method,
       reference: payForm.reference,
     });
+    if (error) { show('Could not mark as paid: ' + error.message, 'error'); return; }
     setMarkPaidId(null);
     setPayForm({ amount: '', method: 'mpesa', reference: '' });
     show('Invoice marked as paid.');
