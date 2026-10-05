@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { getCODashboardStats, getMyCOApplications, getCOProfile, getCOPaymentStats } from '../../lib/api';
+import { getCODashboardStats, getMyCOApplications, getCOProfile, getCOPaymentStats, checkMyLicence } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { StatCard } from '../../components/common/Card';
 import { StatCardSkeleton, ShiftCardSkeleton } from '../../components/common/Skeleton';
@@ -44,6 +44,8 @@ export default function CODashboard() {
       setRecentApps(apps.slice(0, 4));
 
       const p = profileRes.data;
+      // First visit after signup: look the licence up on the MCT register (server rate-limits this)
+      if (p && (!p.mct_status || p.mct_status === 'unchecked')) checkMyLicence('signup');
       if (!p?.employment_availability_status) {
         setAvailStatus(false);
       } else {

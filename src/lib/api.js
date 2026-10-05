@@ -1295,3 +1295,41 @@ export async function getFacilityDashboardStats(facilityId) {
 export async function submitFeedback(userId, payload) {
   return supabase.from('beta_feedback').insert({ user_id: userId, ...payload });
 }
+
+// ─── MCT licence verification (verify-co edge function) ────────────────────
+
+/** Admin: look up one CO on the MCT register now. */
+export async function adminCheckCOLicence(coId) {
+  const { data, error } = await supabase.functions.invoke('verify-co', { body: { co_id: coId } });
+  return { data, error: error || (data?.error ? new Error(data.error) : null) };
+}
+
+/** Admin: re-check every CO (or only those never checked). Takes ~1s per CO. */
+export async function adminCheckAllCOLicences({ onlyUnchecked = false } = {}) {
+  const { data, error } = await supabase.functions.invoke('verify-co', { body: { all: true, only_unchecked: onlyUnchecked } });
+  return { data, error: error || (data?.error ? new Error(data.error) : null) };
+}
+
+/** Admin: lookup history for one CO, newest first. */
+export async function getCOMctChecks(coId, limit = 5) {
+  return supabase.from('co_mct_checks')
+    .select('id, checked_at, trigger_source, searched_number, status, reg_number, hprs_name, hprs_profession, licence_expires, name_match, caveat, message, hprs_photo_url')
+    .eq('co_id', coId).order('checked_at', { ascending: false }).limit(limit);
+}
+
+/** Admin: HPRS profile photo as a data URL (HPRS serves photos over http, so we proxy). */
+export async function getHprsPhoto(url) {
+  const { data, error } = await supabase.functions.invoke('verify-co', { body: { photo_url: url } });
+  return { data: data?.data_url || null, error: error || (data?.error ? new Error(data.error) : null) };
+}
+
+/** Admin: confirm (or remove) a CO's verification after the identity check. */
+export async function adminSetCOVerification(coId, verified, note = null) {
+  return supabase.rpc('admin_set_co_verification', { p_co_id: coId, p_verified: verified, p_note: note });
+}
+
+/** CO: check my own licence (after signup, or after changing the number). Rate-limited server-side. */
+export async function checkMyLicence(source = 'self') {
+  const { data, error } = await supabase.functions.invoke('verify-co', { body: { self: true, source } });
+  return { data, error };
+}

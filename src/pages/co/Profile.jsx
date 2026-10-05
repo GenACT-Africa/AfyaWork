@@ -96,6 +96,25 @@ function minMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+const MCT_NOTES = {
+  valid:            ['text-green-700', 'MCT licence checked'],
+  grace:            ['text-amber-700', 'MCT licence checked (renewal grace period) — please renew'],
+  expired:          ['text-red-700',   'Your MCT practising licence has expired. Renew it, then contact AfyaWork.'],
+  not_licensed:     ['text-red-700',   'MCT shows no practising licence for this number. Contact AfyaWork.'],
+  suspended:        ['text-red-700',   'MCT shows this licence as not allowed to practise. Contact AfyaWork.'],
+  not_found:        ['text-red-700',   'We could not find this number on the MCT register. Check it and send the correct number to AfyaWork.'],
+  wrong_profession: ['text-amber-700', 'MCT lists this number under a different profession. AfyaWork will review it.'],
+};
+
+function MctLicenceNote({ profile }) {
+  const n = profile && MCT_NOTES[profile.mct_status];
+  if (!n) return <p className="text-xs text-gray-400 mt-1">AfyaWork checks every licence on the MCT register.</p>;
+  const [cls, text] = n;
+  const until = profile.mct_licence_expires && ['valid', 'grace'].includes(profile.mct_status)
+    ? ` · valid to ${new Date(profile.mct_licence_expires + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+  return <p className={`text-xs mt-1 ${cls}`}>{text}{until}{profile.verified ? '' : profile.mct_status === 'valid' ? ' · identity review pending' : ''}</p>;
+}
+
 export default function COProfile() {
   const { user, refreshUser } = useAuth();
   const { show, ToastComponent } = useToast();
@@ -351,7 +370,10 @@ export default function COProfile() {
               <Input label="Full Name" value={form.display_name} onChange={set('display_name')} required />
               <Input label="Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />
               <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
-              <Input label="License Number" value={profile?.license_number || ''} disabled className="bg-gray-50 text-gray-500" />
+              <div>
+                <Input label="License Number" value={profile?.license_number || ''} disabled className="bg-gray-50 text-gray-500" />
+                <MctLicenceNote profile={profile} />
+              </div>
               <Select label="Specialization" value={form.specialization} onChange={set('specialization')}>
                 <option value="">Select specialization</option>
                 <option value="General">General Practice</option>

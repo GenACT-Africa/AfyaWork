@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { UserCircle, Mail, Phone, Search, Award, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, BadgeCheck } from 'lucide-react';
+import { UserCircle, Mail, Phone, Search, Award, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, BadgeCheck, ShieldCheck } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -7,6 +7,8 @@ import { Input, Select } from '../../components/common/Input';
 import { Avatar } from '../../components/common/Avatar';
 import { Badge, AvailabilityBadge } from '../../components/common/Badge';
 import { COProfileView } from '../../components/admin/COProfileView';
+import { MctStatusBadge } from '../../components/admin/MctVerification';
+import { MCT_STATUS } from '../../components/admin/mctStatus';
 import {
   AccountStatusBadge, CompletenessBar, RatingPill,
 } from '../../components/admin/ProfileKit';
@@ -17,6 +19,7 @@ import {
   adminUpdateWorker,
   adminDeleteUser,
   adminResendInvite,
+  adminCheckCOLicence,
 } from '../../lib/api';
 
 const BLANK = { email: '', display_name: '', license_number: '', specialization: '', phone: '' };
@@ -28,7 +31,13 @@ const FILTERS = [
   { key: 'incomplete', label: 'Incomplete profile' },
   { key: 'no_ica',     label: 'Agreement not signed' },
   { key: 'no_mm',      label: 'No mobile money' },
+  { key: 'to_review',  label: 'MCT valid — approve identity' },
+  { key: 'mct_problem', label: 'MCT problem' },
+  { key: 'unchecked',  label: 'MCT not checked' },
 ];
+
+const MCT_OK = ['valid', 'grace'];
+const MCT_PROBLEM = ['expired', 'not_licensed', 'suspended', 'not_found', 'wrong_profession'];
 
 const SORTS = {
   newest: (a, b) => new Date(b.users?.created_at || 0) - new Date(a.users?.created_at || 0),
@@ -97,6 +106,7 @@ export default function AdminWorkers() {
   const [deleting, setDeleting] = useState(false);
 
   const [resendingId, setResendingId] = useState(null);
+  const [checkingAll, setCheckingAll] = useState(false);
   const [toast, setToast] = useState('');
 
   async function load() {
@@ -116,13 +126,16 @@ export default function AdminWorkers() {
   function changeView(v) { setView(v); saveView(v); }
 
   const counts = useMemo(() => {
-    const c = { all: workers.length, active: 0, pending: 0, incomplete: 0, no_ica: 0, no_mm: 0 };
+    const c = { all: workers.length, active: 0, pending: 0, incomplete: 0, no_ica: 0, no_mm: 0, to_review: 0, mct_problem: 0, unchecked: 0 };
     workers.forEach((w) => {
       const st = w.users?.account_status || 'active';
       if (st === 'active') c.active++; else c.pending++;
       if (w._completeness.pct < 100) c.incomplete++;
       if (!w.ica_signed_at) c.no_ica++;
       if (!w.has_mobile_money) c.no_mm++;
+      if (MCT_OK.includes(w.mct_status) && !w.verified) c.to_review++;
+      if (MCT_PROBLEM.includes(w.mct_status)) c.mct_problem++;
+      if (!w.mct_status || w.mct_status === 'unchecked' || w.mct_status === 'error') c.unchecked++;
     });
     return c;
   }, [workers]);
@@ -137,6 +150,9 @@ export default function AdminWorkers() {
         if (filter === 'incomplete' && w._completeness.pct >= 100) return false;
         if (filter === 'no_ica' && w.ica_signed_at) return false;
         if (filter === 'no_mm' && w.has_mobile_money) return false;
+        if (filter === 'to_review' && !(MCT_OK.includes(w.mct_status) && !w.verified)) return false;
+        if (filter === 'mct_problem' && !MCT_PROBLEM.includes(w.mct_status)) return false;
+        if (filter === 'unchecked' && !(!w.mct_status || ['unchecked', 'error'].includes(w.mct_status))) return false;
         if (!q) return true;
         return (
           w.users?.display_name?.toLowerCase().includes(q) ||
@@ -213,6 +229,21 @@ export default function AdminWorkers() {
     }
   }
 
+  async function handleCheckAll() {
+    setCheckingAll(true);
+    const summary = {};
+    let failed = 0;
+    for (let i = 0; i < workers.length; i++) {
+      setToast(`Checking MCT register… ${i + 1} of ${workers.length}`);
+      const { data, error } = await adminCheckCOLicence(workers[i].user_id);
+      if (error) failed++; else summary[data.status] = (summary[data.status] || 0) + 1;
+    }
+    setCheckingAll(false);
+    const parts = Object.entries(summary).map(([k, n]) => `${n} ${(MCT_STATUS[k]?.label || k).toLowerCase()}`);
+    showToast(`Checked ${workers.length}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`);
+    load();
+  }
+
   function actions(w) {
     const st = w.users?.account_status || 'active';
     const isPending = st === 'pending_invite' || st === 'expired';
@@ -241,9 +272,14 @@ export default function AdminWorkers() {
       title="Clinical Officers"
       subtitle={`${workers.length} registered workers · ${counts.active} active · ${counts.pending} awaiting invite`}
       action={
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="w-4 h-4" /> Add Worker
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" loading={checkingAll} onClick={handleCheckAll} title="Look up every CO on the MCT register (HPRS)">
+            <ShieldCheck className="w-4 h-4" /> Check all on MCT
+          </Button>
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="w-4 h-4" /> Add Worker
+          </Button>
+        </div>
       }
     >
       {/* Toast */}
@@ -339,6 +375,7 @@ export default function AdminWorkers() {
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <AccountStatusBadge status={w.users?.account_status || 'active'} />
                       <Badge status={w.subscription_tier || 'msingi'} className="!py-0.5" />
+                      <MctStatusBadge status={w.mct_status} />
                     </div>
                   </div>
                 </div>
@@ -413,6 +450,7 @@ export default function AdminWorkers() {
                   </td>
                   <td className="px-5 py-4">
                     <AccountStatusBadge status={w.users?.account_status || 'active'} />
+                    <MctStatusBadge status={w.mct_status} className="mt-1.5" />
                     <p className="text-xs text-gray-400 mt-1.5 whitespace-nowrap">Joined {formatDate(w.users?.created_at)}</p>
                   </td>
                   <td className="px-5 py-4 min-w-[120px]">
@@ -444,6 +482,7 @@ export default function AdminWorkers() {
           onResend={handleResend}
           onDelete={setDeleteTarget}
           resending={resendingId === viewing}
+          onVerificationChange={load}
         />
       )}
 

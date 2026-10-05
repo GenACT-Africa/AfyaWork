@@ -11,6 +11,7 @@ import {
   AccountStatusBadge, RatingsList, ChecklistCard, CompletenessBar,
 } from './ProfileKit';
 import { coCompleteness, formatDate, formatTZS } from './profileUtils';
+import { MctVerificationPanel, MctStatusBadge } from './MctVerification';
 
 // Mirrors the options on the CO's own Profile page
 const TIERS = [
@@ -53,8 +54,9 @@ function Tabs({ tab, setTab, counts }) {
   );
 }
 
-export function COProfileView({ userId, onClose, onEdit, onResend, onDelete, resending }) {
+export function COProfileView({ userId, onClose, onEdit, onResend, onDelete, resending, onVerificationChange }) {
   const [data, setData] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('profile');
 
@@ -65,7 +67,12 @@ export function COProfileView({ userId, onClose, onEdit, onResend, onDelete, res
       if (error) setError(error.message); else setData(data);
     });
     return () => { alive = false; };
-  }, [userId]);
+  }, [userId, reloadKey]);
+
+  function verificationChanged() {
+    setReloadKey((k) => k + 1);
+    onVerificationChange?.();
+  }
 
   const p = data?.profile;
   const u = p?.users || {};
@@ -116,6 +123,7 @@ export function COProfileView({ userId, onClose, onEdit, onResend, onDelete, res
                       <BadgeCheck className="w-3.5 h-3.5" /> Verified CO
                     </span>
                   )}
+                  <MctStatusBadge status={p.mct_status} />
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5">
                   <Award className="w-4 h-4 text-gray-400" />
@@ -137,6 +145,8 @@ export function COProfileView({ userId, onClose, onEdit, onResend, onDelete, res
             {tab === 'profile' && (
               <div className="grid lg:grid-cols-3 gap-5">
                 <div className="lg:col-span-2 space-y-5">
+                  <MctVerificationPanel profile={p} onChanged={verificationChanged} />
+
                   <Section icon={UserCircle} title="Personal Information">
                     <div className="grid sm:grid-cols-2 gap-4">
                       <Field label="Full Name" value={u.display_name} />
