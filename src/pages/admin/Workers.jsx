@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { UserCircle, Mail, Phone, Search, Award, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, BadgeCheck, ShieldCheck } from 'lucide-react';
+import { UserCircle, Mail, Phone, Search, Award, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, BadgeCheck, ShieldCheck, Download } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -21,6 +21,7 @@ import {
   adminResendInvite,
   adminCheckCOLicence,
 } from '../../lib/api';
+import { downloadXlsx, exportFilename, toDate } from '../../lib/exportXlsx';
 
 const BLANK = { email: '', display_name: '', license_number: '', specialization: '', phone: '' };
 
@@ -38,6 +39,35 @@ const FILTERS = [
 
 const MCT_OK = ['valid', 'grace'];
 const MCT_PROBLEM = ['expired', 'not_licensed', 'suspended', 'not_found', 'wrong_profession'];
+
+const ACCOUNT_LABELS = { active: 'Active', pending_invite: 'Invite pending', expired: 'Invite expired' };
+const humanize = (v) => (v ? String(v).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : '');
+
+const EXPORT_COLUMNS = [
+  { header: 'Name',                 value: (w) => w.users?.display_name, width: 26 },
+  { header: 'Email',                value: (w) => w.users?.email, width: 30 },
+  { header: 'Phone',                value: (w) => w.users?.phone, width: 18 },
+  { header: 'Licence number',       value: (w) => w.license_number, width: 18 },
+  { header: 'Specialization',       value: (w) => w.specialization || 'General' },
+  { header: 'Account status',       value: (w) => ACCOUNT_LABELS[w.users?.account_status || 'active'] || humanize(w.users?.account_status) },
+  { header: 'Identity verified',    value: (w) => !!w.verified },
+  { header: 'MCT status',           value: (w) => MCT_STATUS[w.mct_status || 'unchecked']?.label || humanize(w.mct_status), width: 20 },
+  { header: 'MCT reg. number',      value: (w) => w.mct_reg_number, width: 18 },
+  { header: 'MCT licence expires',  value: (w) => toDate(w.mct_licence_expires), width: 18 },
+  { header: 'MCT last checked',     value: (w) => toDate(w.mct_checked_at) },
+  { header: 'Plan',                 value: (w) => humanize(w.subscription_tier || 'msingi'), width: 12 },
+  { header: 'Availability',         value: (w) => humanize(w.employment_availability_status), width: 20 },
+  { header: 'Agreement signed',     value: (w) => toDate(w.ica_signed_at) },
+  { header: 'Mobile money',         value: (w) => !!w.has_mobile_money, width: 14 },
+  { header: 'Profile complete (%)', value: (w) => w._completeness.pct, width: 20 },
+  { header: 'Applications',         value: (w) => w.app_stats?.total || 0, width: 14 },
+  { header: 'Approved',             value: (w) => w.app_stats?.approved || 0, width: 12 },
+  { header: 'Avg. rating',          value: (w) => (w.rating?.count ? Math.round(w.rating.avg * 10) / 10 : null), width: 12 },
+  { header: 'Ratings',              value: (w) => w.rating?.count || 0, width: 10 },
+  { header: 'Invited',              value: (w) => toDate(w.users?.invited_at) },
+  { header: 'Activated',            value: (w) => toDate(w.users?.activated_at) },
+  { header: 'Joined',               value: (w) => toDate(w.users?.created_at) },
+];
 
 const SORTS = {
   newest: (a, b) => new Date(b.users?.created_at || 0) - new Date(a.users?.created_at || 0),
@@ -107,11 +137,13 @@ export default function AdminWorkers() {
 
   const [resendingId, setResendingId] = useState(null);
   const [checkingAll, setCheckingAll] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [toast, setToast] = useState('');
 
   async function load() {
     setLoading(true);
-    const { data } = await getAdminWorkers();
+    const { data, error } = await getAdminWorkers();
+    setLoadError(error ? (error.message || String(error)) + (error.code ? ` (${error.code})` : '') : '');
     setWorkers((data || []).map((w) => ({ ...w, _completeness: coCompleteness(w) })));
     setLoading(false);
   }
@@ -244,6 +276,12 @@ export default function AdminWorkers() {
     load();
   }
 
+  function handleExport() {
+    const isAll = filter === 'all' && !search.trim();
+    downloadXlsx(exportFilename('clinical-officers'), 'Clinical Officers', EXPORT_COLUMNS, filtered);
+    showToast(`Exported ${filtered.length} ${isAll ? '' : 'filtered '}worker${filtered.length === 1 ? '' : 's'} to Excel`);
+  }
+
   function actions(w) {
     const st = w.users?.account_status || 'active';
     const isPending = st === 'pending_invite' || st === 'expired';
@@ -273,6 +311,9 @@ export default function AdminWorkers() {
       subtitle={`${workers.length} registered workers · ${counts.active} active · ${counts.pending} awaiting invite`}
       action={
         <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={handleExport} disabled={loading || filtered.length === 0} title="Download the list below (current search, filter and sort) as an Excel spreadsheet">
+            <Download className="w-4 h-4" /> Export
+          </Button>
           <Button size="sm" variant="secondary" loading={checkingAll} onClick={handleCheckAll} title="Look up every CO on the MCT register (HPRS)">
             <ShieldCheck className="w-4 h-4" /> Check all on MCT
           </Button>
@@ -322,6 +363,12 @@ export default function AdminWorkers() {
           </div>
         </div>
       </div>
+
+      {loadError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Could not load Clinical Officers: {loadError}
+        </div>
+      )}
 
       {/* Filter chips */}
       <div className="flex flex-wrap gap-2 mb-6">

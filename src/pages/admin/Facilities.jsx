@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List } from 'lucide-react';
+import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, Download } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -17,6 +17,7 @@ import {
   adminDeleteUser,
   adminResendInvite,
 } from '../../lib/api';
+import { downloadXlsx, exportFilename, toDate } from '../../lib/exportXlsx';
 
 const BLANK = { email: '', facility_name: '', facility_type: '', address: '', phone: '' };
 
@@ -29,6 +30,29 @@ const FILTERS = [
   { key: 'posting',    label: 'Posting shifts' },
   { key: 'no_shifts',  label: 'No shifts yet' },
   { key: 'incomplete', label: 'Incomplete profile' },
+];
+
+const ACCOUNT_LABELS = { active: 'Active', pending_invite: 'Invite pending', expired: 'Invite expired' };
+
+const EXPORT_COLUMNS = [
+  { header: 'Facility name',        value: (f) => f.facility_name, width: 32 },
+  { header: 'Type',                 value: (f) => f.facility_type, width: 18 },
+  { header: 'Address',              value: (f) => f.address, width: 34 },
+  { header: 'Contact name',         value: (f) => f.users?.display_name, width: 24 },
+  { header: 'Email',                value: (f) => f.users?.email, width: 30 },
+  { header: 'Phone',                value: (f) => f.users?.phone, width: 18 },
+  { header: 'Account status',       value: (f) => ACCOUNT_LABELS[f.users?.account_status || 'active'] || f.users?.account_status },
+  { header: 'Plan',                 value: (f) => PLAN_LABELS[f.subscription_plan] || f.subscription_plan },
+  { header: 'Shifts posted',        value: (f) => f.shift_stats?.total || 0, width: 14 },
+  { header: 'Open shifts',          value: (f) => f.shift_stats?.open || 0, width: 12 },
+  { header: 'Completed shifts',     value: (f) => f.shift_stats?.completed || 0 },
+  { header: 'Avg. rating',          value: (f) => (f.rating?.count ? Math.round(f.rating.avg * 10) / 10 : null), width: 12 },
+  { header: 'Ratings',              value: (f) => f.rating?.count || 0, width: 10 },
+  { header: 'Profile complete (%)', value: (f) => f._completeness.pct, width: 20 },
+  { header: 'Terms accepted',       value: (f) => toDate(f.users?.tos_agreed_at) },
+  { header: 'Invited',              value: (f) => toDate(f.users?.invited_at) },
+  { header: 'Activated',            value: (f) => toDate(f.users?.activated_at) },
+  { header: 'Joined',               value: (f) => toDate(f.users?.created_at) },
 ];
 
 const SORTS = {
@@ -235,14 +259,25 @@ export default function AdminFacilities() {
     );
   }
 
+  function handleExport() {
+    const isAll = filter === 'all' && !search.trim();
+    downloadXlsx(exportFilename('facilities'), 'Facilities', EXPORT_COLUMNS, filtered);
+    showToast(`Exported ${filtered.length} ${isAll ? '' : 'filtered '}facilit${filtered.length === 1 ? 'y' : 'ies'} to Excel`);
+  }
+
   return (
     <PageWrapper
       title="Facilities"
       subtitle={`${facilities.length} registered healthcare facilities · ${counts.posting} posting shifts`}
       action={
-        <Button size="sm" onClick={openAdd}>
-          <Plus className="w-4 h-4" /> Add Facility
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={handleExport} disabled={loading || filtered.length === 0} title="Download the list below (current search, filter and sort) as an Excel spreadsheet">
+            <Download className="w-4 h-4" /> Export
+          </Button>
+          <Button size="sm" onClick={openAdd}>
+            <Plus className="w-4 h-4" /> Add Facility
+          </Button>
+        </div>
       }
     >
       {/* Toast */}
