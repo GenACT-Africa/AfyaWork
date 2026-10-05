@@ -549,40 +549,171 @@ export async function getAdminStats() {
   };
 }
 
+// Average rating per ratee, ignoring ratings hidden by admin
+function buildRatingMap(rows) {
+  const map = {};
+  (rows || []).forEach((r) => {
+    if (!map[r.ratee_id]) map[r.ratee_id] = { sum: 0, count: 0 };
+    map[r.ratee_id].sum += r.stars;
+    map[r.ratee_id].count++;
+  });
+  Object.values(map).forEach((m) => { m.avg = m.count ? m.sum / m.count : 0; });
+  return map;
+}
+
+const ADMIN_USER_COLS = 'email, phone, display_name, created_at, account_status, invited_at, activated_at, avatar_url, bio, tos_agreed_at';
+
 export async function getAdminFacilities() {
   const { data, error } = await supabase
     .from('facility_profiles')
-    .select('*, users(email, phone, created_at, account_status, invited_at, avatar_url)')
+    .select(`*, users(${ADMIN_USER_COLS})`)
     .order('facility_name', { ascending: true });
   if (error || !data) return { data: [], error };
 
   const ids = data.map((f) => f.user_id);
-  const { data: shifts } = await supabase.from('shifts').select('facility_id, status').in('facility_id', ids);
+  const [{ data: shifts }, { data: ratings }] = await Promise.all([
+    supabase.from('shifts').select('facility_id, status').in('facility_id', ids),
+    supabase.from('shift_ratings').select('ratee_id, stars').in('ratee_id', ids).eq('hidden_by_admin', false),
+  ]);
   const shiftMap = {};
   (shifts || []).forEach((s) => {
-    if (!shiftMap[s.facility_id]) shiftMap[s.facility_id] = { total: 0, open: 0 };
+    if (!shiftMap[s.facility_id]) shiftMap[s.facility_id] = { total: 0, open: 0, completed: 0 };
     shiftMap[s.facility_id].total++;
     if (s.status === 'open') shiftMap[s.facility_id].open++;
+    if (s.status === 'completed') shiftMap[s.facility_id].completed++;
   });
-  return { data: data.map((f) => ({ ...f, shift_stats: shiftMap[f.user_id] || { total: 0, open: 0 } })), error: null };
+  const ratingMap = buildRatingMap(ratings);
+  return {
+    data: data.map((f) => ({
+      ...f,
+      shift_stats: shiftMap[f.user_id] || { total: 0, open: 0, completed: 0 },
+      rating: ratingMap[f.user_id] || null,
+    })),
+    error: null,
+  };
 }
 
 export async function getAdminWorkers() {
   const { data, error } = await supabase
     .from('co_profiles')
-    .select('*, users(email, phone, display_name, created_at, account_status, invited_at, avatar_url)')
+    .select(`*, users(${ADMIN_USER_COLS})`)
     .order('user_id', { ascending: true });
   if (error || !data) return { data: [], error };
 
   const ids = data.map((c) => c.user_id);
-  const { data: apps } = await supabase.from('applications').select('co_id, status').in('co_id', ids);
+  const [{ data: apps }, { data: mm }, { data: ratings }] = await Promise.all([
+    supabase.from('applications').select('co_id, status').in('co_id', ids),
+    supabase.from('co_mobile_money').select('co_id').in('co_id', ids),
+    supabase.from('shift_ratings').select('ratee_id, stars').in('ratee_id', ids).eq('hidden_by_admin', false),
+  ]);
   const appMap = {};
   (apps || []).forEach((a) => {
     if (!appMap[a.co_id]) appMap[a.co_id] = { total: 0, approved: 0 };
     appMap[a.co_id].total++;
     if (a.status === 'approved') appMap[a.co_id].approved++;
   });
-  return { data: data.map((c) => ({ ...c, app_stats: appMap[c.user_id] || { total: 0, approved: 0 } })), error: null };
+  const mmSet = new Set((mm || []).map((m) => m.co_id));
+  const ratingMap = buildRatingMap(ratings);
+  return {
+    data: data.map((c) => ({
+      ...c,
+      app_stats: appMap[c.user_id] || { total: 0, approved: 0 },
+      has_mobile_money: mmSet.has(c.user_id),
+      rating: ratingMap[c.user_id] || null,
+    })),
+    error: null,
+  };
+}
+
+const RATING_COLS = 'id, stars, comment, published_at, hidden_by_admin, reported, rating_type, shifts(shift_date, shift_type), rater:rater_id(display_name, avatar_url, role)';
+
+/** Full CO profile for the admin profile viewer: profile, payout details, ratings, application history. */
+export async function getAdminWorkerDetail(userId) {
+  const [
+    { data: profile, error },
+    { data: mobileMoney },
+    { data: ratings },
+    { data: apps },
+  ] = await Promise.all([
+    supabase.from('co_profiles').select(`*, users(${ADMIN_USER_COLS})`).eq('user_id', userId).single(),
+    supabase.from('co_mobile_money').select('*').eq('co_id', userId).maybeSingle(),
+    supabase.from('shift_ratings').select(RATING_COLS).eq('ratee_id', userId).order('published_at', { ascending: false }),
+    supabase
+      .from('applications')
+      .select('id, status, applied_at, shifts(id, shift_date, shift_type, pay_amount, status, facility_id, assigned_co_id)')
+      .eq('co_id', userId)
+      .order('applied_at', { ascending: false }),
+  ]);
+  if (error) return { data: null, error };
+
+  const facilityIds = [...new Set((apps || []).map((a) => a.shifts?.facility_id).filter(Boolean))];
+  const { data: facilities } = facilityIds.length
+    ? await supabase.from('facility_profiles').select('user_id, facility_name').in('user_id', facilityIds)
+    : { data: [] };
+  const facilityName = Object.fromEntries((facilities || []).map((f) => [f.user_id, f.facility_name]));
+
+  const applications = (apps || []).map((a) => ({
+    ...a,
+    facility_name: facilityName[a.shifts?.facility_id] || null,
+  }));
+  const worked = applications.filter((a) => a.shifts?.assigned_co_id === userId);
+
+  return {
+    data: {
+      profile,
+      mobileMoney: mobileMoney || null,
+      ratings: ratings || [],
+      applications,
+      stats: {
+        applied:   applications.length,
+        approved:  applications.filter((a) => a.status === 'approved').length,
+        completed: worked.filter((a) => a.shifts?.status === 'completed').length,
+        noShows:   worked.filter((a) => a.shifts?.status === 'no_show').length,
+      },
+    },
+    error: null,
+  };
+}
+
+/** Full facility profile for the admin profile viewer: profile, shifts posted, ratings from COs. */
+export async function getAdminFacilityDetail(userId) {
+  const [
+    { data: profile, error },
+    { data: shifts },
+    { data: ratings },
+  ] = await Promise.all([
+    supabase.from('facility_profiles').select(`*, users(${ADMIN_USER_COLS})`).eq('user_id', userId).single(),
+    supabase
+      .from('shifts')
+      .select('id, shift_date, shift_type, pay_amount, status, assigned_co_id, created_at')
+      .eq('facility_id', userId)
+      .order('shift_date', { ascending: false }),
+    supabase.from('shift_ratings').select(RATING_COLS).eq('ratee_id', userId).order('published_at', { ascending: false }),
+  ]);
+  if (error) return { data: null, error };
+
+  const coIds = [...new Set((shifts || []).map((s) => s.assigned_co_id).filter(Boolean))];
+  const { data: cos } = coIds.length
+    ? await supabase.from('users').select('id, display_name').in('id', coIds)
+    : { data: [] };
+  const coName = Object.fromEntries((cos || []).map((u) => [u.id, u.display_name]));
+
+  const list = (shifts || []).map((s) => ({ ...s, co_name: coName[s.assigned_co_id] || null }));
+  return {
+    data: {
+      profile,
+      shifts: list,
+      ratings: ratings || [],
+      stats: {
+        total:     list.length,
+        open:      list.filter((s) => s.status === 'open').length,
+        completed: list.filter((s) => s.status === 'completed').length,
+        cancelled: list.filter((s) => s.status === 'cancelled').length,
+        spend:     list.filter((s) => s.status === 'completed').reduce((t, s) => t + (s.pay_amount || 0), 0),
+      },
+    },
+    error: null,
+  };
 }
 
 export async function getAdminShifts() {

@@ -6,6 +6,8 @@ const SIZES = {
   md: 'w-10 h-10 text-sm',
   lg: 'w-11 h-11 text-sm',
   xl: 'w-16 h-16 text-xl',
+  '2xl': 'w-24 h-24 text-3xl',
+  '3xl': 'w-32 h-32 text-4xl',
 };
 
 /**
@@ -14,7 +16,7 @@ const SIZES = {
  * Props:
  *   src      — image URL (optional)
  *   name     — display name used for initials fallback and alt text
- *   size     — 'xs' | 'sm' | 'md' | 'lg' | 'xl'  (default: 'md')
+ *   size     — 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl'  (default: 'md')
  *   shape    — 'circle' | 'rounded'  (default: 'circle')
  *   className — extra Tailwind classes
  */
@@ -22,7 +24,7 @@ export function Avatar({ src, name, size = 'md', shape = 'circle', className = '
   const [imgError, setImgError] = useState(false);
 
   const sizeClass  = SIZES[size] ?? SIZES.md;
-  const shapeClass = shape === 'rounded' ? 'rounded-xl' : 'rounded-full';
+  const shapeClass = shape === 'rounded' ? (size === '2xl' || size === '3xl' ? 'rounded-2xl' : 'rounded-xl') : 'rounded-full';
   const initials   = (name || '?')
     .split(' ')
     .map((w) => w[0])

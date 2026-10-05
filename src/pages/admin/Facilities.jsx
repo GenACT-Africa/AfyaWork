@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
 import { Avatar } from '../../components/common/Avatar';
+import { FacilityProfileView } from '../../components/admin/FacilityProfileView';
+import {
+  AccountStatusBadge, CompletenessBar, RatingPill,
+} from '../../components/admin/ProfileKit';
+import { facilityCompleteness, formatDate } from '../../components/admin/profileUtils';
 import {
   getAdminFacilities,
   adminCreateFacility,
@@ -15,34 +20,29 @@ import {
 
 const BLANK = { email: '', facility_name: '', facility_type: '', address: '', phone: '' };
 
-function formatDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
+const PLAN_LABELS = { payg: 'Pay-as-you-go', starter: 'Starter', growth: 'Growth', enterprise: 'Enterprise' };
 
-function StatusBadge({ status }) {
-  if (status === 'pending_invite') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-        Invite pending
-      </span>
-    );
-  }
-  if (status === 'expired') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-xs font-medium border border-red-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-        Invite expired
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-medium border border-green-200">
-      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-      Active
-    </span>
-  );
+const FILTERS = [
+  { key: 'all',        label: 'All' },
+  { key: 'active',     label: 'Active' },
+  { key: 'pending',    label: 'Invite pending' },
+  { key: 'posting',    label: 'Posting shifts' },
+  { key: 'no_shifts',  label: 'No shifts yet' },
+  { key: 'incomplete', label: 'Incomplete profile' },
+];
+
+const SORTS = {
+  name:     (a, b) => (a.facility_name || '').localeCompare(b.facility_name || ''),
+  newest:   (a, b) => new Date(b.users?.created_at || 0) - new Date(a.users?.created_at || 0),
+  oldest:   (a, b) => new Date(a.users?.created_at || 0) - new Date(b.users?.created_at || 0),
+  shifts:   (a, b) => (b.shift_stats?.total || 0) - (a.shift_stats?.total || 0),
+};
+
+function readView() {
+  try { return localStorage.getItem('admin.facilities.view') || 'grid'; } catch { return 'grid'; }
+}
+function saveView(v) {
+  try { localStorage.setItem('admin.facilities.view', v); } catch { /* ignore */ }
 }
 
 function Modal({ title, subtitle, onClose, children }) {
@@ -64,10 +64,30 @@ function Modal({ title, subtitle, onClose, children }) {
   );
 }
 
+function IconAction({ title, onClick, disabled, hover, children }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`p-1.5 rounded-lg text-gray-400 transition-colors disabled:opacity-50 ${hover}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function AdminFacilities() {
   const [facilities, setFacilities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('name');
+  const [view, setView] = useState(readView);
+
+  const [viewing, setViewing] = useState(null);
+  const [viewKey, setViewKey] = useState(0);
 
   const [modal, setModal] = useState(null); // null | { mode: 'add' | 'edit', userId?: string }
   const [form, setForm] = useState(BLANK);
@@ -83,7 +103,7 @@ export default function AdminFacilities() {
   async function load() {
     setLoading(true);
     const { data } = await getAdminFacilities();
-    setFacilities(data || []);
+    setFacilities((data || []).map((f) => ({ ...f, _completeness: facilityCompleteness(f) })));
     setLoading(false);
   }
 
@@ -94,15 +114,40 @@ export default function AdminFacilities() {
     setTimeout(() => setToast(''), 3500);
   }
 
-  const filtered = facilities.filter((f) => {
-    const q = search.toLowerCase();
-    return (
-      f.facility_name?.toLowerCase().includes(q) ||
-      f.facility_type?.toLowerCase().includes(q) ||
-      f.address?.toLowerCase().includes(q) ||
-      f.users?.email?.toLowerCase().includes(q)
-    );
-  });
+  function changeView(v) { setView(v); saveView(v); }
+
+  const counts = useMemo(() => {
+    const c = { all: facilities.length, active: 0, pending: 0, posting: 0, no_shifts: 0, incomplete: 0 };
+    facilities.forEach((f) => {
+      const st = f.users?.account_status || 'active';
+      if (st === 'active') c.active++; else c.pending++;
+      if (f.shift_stats?.total) c.posting++; else c.no_shifts++;
+      if (f._completeness.pct < 100) c.incomplete++;
+    });
+    return c;
+  }, [facilities]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return facilities
+      .filter((f) => {
+        const st = f.users?.account_status || 'active';
+        if (filter === 'active' && st !== 'active') return false;
+        if (filter === 'pending' && st === 'active') return false;
+        if (filter === 'posting' && !f.shift_stats?.total) return false;
+        if (filter === 'no_shifts' && f.shift_stats?.total) return false;
+        if (filter === 'incomplete' && f._completeness.pct >= 100) return false;
+        if (!q) return true;
+        return (
+          f.facility_name?.toLowerCase().includes(q) ||
+          f.facility_type?.toLowerCase().includes(q) ||
+          f.address?.toLowerCase().includes(q) ||
+          f.users?.email?.toLowerCase().includes(q) ||
+          f.users?.phone?.toLowerCase().includes(q)
+        );
+      })
+      .sort(SORTS[sort]);
+  }, [facilities, search, filter, sort]);
 
   function set(field) {
     return (e) => setForm((p) => ({ ...p, [field]: e.target.value }));
@@ -142,6 +187,7 @@ export default function AdminFacilities() {
 
     setModal(null);
     load();
+    setViewKey((k) => k + 1);
     if (modal.mode === 'add') showToast('Facility created — invite email sent.');
   }
 
@@ -149,6 +195,7 @@ export default function AdminFacilities() {
     setDeleting(true);
     await adminDeleteUser(deleteTarget.user_id);
     setDeleting(false);
+    if (viewing === deleteTarget.user_id) setViewing(null);
     setDeleteTarget(null);
     load();
   }
@@ -165,10 +212,33 @@ export default function AdminFacilities() {
     }
   }
 
+  function actions(f) {
+    const st = f.users?.account_status || 'active';
+    const isPending = st === 'pending_invite' || st === 'expired';
+    return (
+      <div className="flex items-center gap-0.5 justify-end">
+        <IconAction title="View profile" onClick={() => setViewing(f.user_id)} hover="hover:text-teal-600 hover:bg-teal-50">
+          <Eye className="w-4 h-4" />
+        </IconAction>
+        {isPending && (
+          <IconAction title="Resend invite" onClick={() => handleResend(f)} disabled={resendingId === f.user_id} hover="hover:text-amber-600 hover:bg-amber-50">
+            <Send className="w-4 h-4" />
+          </IconAction>
+        )}
+        <IconAction title="Edit" onClick={() => openEdit(f)} hover="hover:text-teal-600 hover:bg-teal-50">
+          <Pencil className="w-4 h-4" />
+        </IconAction>
+        <IconAction title="Delete" onClick={() => setDeleteTarget(f)} hover="hover:text-red-600 hover:bg-red-50">
+          <Trash2 className="w-4 h-4" />
+        </IconAction>
+      </div>
+    );
+  }
+
   return (
     <PageWrapper
       title="Facilities"
-      subtitle={`${facilities.length} registered healthcare facilities`}
+      subtitle={`${facilities.length} registered healthcare facilities · ${counts.posting} posting shifts`}
       action={
         <Button size="sm" onClick={openAdd}>
           <Plus className="w-4 h-4" /> Add Facility
@@ -177,33 +247,123 @@ export default function AdminFacilities() {
     >
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-5 py-2.5 rounded-xl shadow-lg animate-fade-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm px-5 py-2.5 rounded-xl shadow-lg">
           {toast}
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative mb-6 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search facilities…"
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white shadow-sm"
-        />
+      {/* Toolbar */}
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, type, area, email…"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white shadow-sm"
+          />
+        </div>
+        <div className="flex items-center gap-2 md:ml-auto">
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className="py-2.5 pl-3 pr-8 rounded-xl border border-gray-200 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            aria-label="Sort facilities"
+          >
+            <option value="name">Name A–Z</option>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="shifts">Most shifts</option>
+          </select>
+          <div className="flex rounded-xl border border-gray-200 bg-white shadow-sm p-0.5">
+            <button onClick={() => changeView('grid')} className={`p-2 rounded-lg ${view === 'grid' ? 'bg-teal-50 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`} aria-label="Card view" title="Card view">
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button onClick={() => changeView('list')} className={`p-2 rounded-lg ${view === 'list' ? 'bg-teal-50 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`} aria-label="Table view" title="Table view">
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+              filter === f.key ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            {f.label} <span className={filter === f.key ? 'text-teal-100' : 'text-gray-400'}>{counts[f.key]}</span>
+          </button>
+        ))}
       </div>
 
       {loading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
+        <div className={view === 'grid' ? 'grid sm:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-3'}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={`${view === 'grid' ? 'h-56' : 'h-20'} bg-gray-100 rounded-2xl animate-pulse`} />
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <Building2 className="w-10 h-10 text-gray-300 mb-3" />
-          <p className="text-gray-500 text-sm">{search ? 'No facilities match your search.' : 'No facilities yet.'}</p>
+          <p className="text-gray-500 text-sm">{search || filter !== 'all' ? 'No facilities match these filters.' : 'No facilities yet.'}</p>
         </Card>
+      ) : view === 'grid' ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((f) => (
+            <div
+              key={f.user_id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setViewing(f.user_id)}
+              onKeyDown={(e) => e.key === 'Enter' && setViewing(f.user_id)}
+              className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer overflow-hidden flex flex-col"
+            >
+              <div className="p-5 flex-1">
+                <div className="flex items-start gap-4">
+                  <Avatar src={f.users?.avatar_url} name={f.facility_name} size="xl" shape="rounded" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-900 truncate">{f.facility_name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{f.facility_type || 'Type not set'}</p>
+                    {f.address && (
+                      <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5 truncate">
+                        <MapPin className="w-3 h-3 shrink-0" />{f.address}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <AccountStatusBadge status={f.users?.account_status || 'active'} />
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 ring-1 ring-sky-200">
+                        {PLAN_LABELS[f.subscription_plan] || 'Pay-as-you-go'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {f.users?.bio ? (
+                  <p className="text-sm text-gray-600 mt-4 line-clamp-2 leading-relaxed">{f.users.bio}</p>
+                ) : (
+                  <p className="text-sm text-gray-300 italic mt-4">No description yet</p>
+                )}
+
+                <div className="flex items-center gap-4 mt-4 text-xs text-gray-500">
+                  <span><span className="font-semibold text-teal-700">{f.shift_stats?.open || 0}</span> open</span>
+                  <span><span className="font-semibold text-gray-800">{f.shift_stats?.total || 0}</span> posted</span>
+                  <span><span className="font-semibold text-emerald-700">{f.shift_stats?.completed || 0}</span> done</span>
+                  <span className="ml-auto"><RatingPill rating={f.rating} /></span>
+                </div>
+                <CompletenessBar result={f._completeness} className="mt-4" />
+              </div>
+              <div className="flex items-center justify-between px-5 py-2.5 border-t border-gray-50 bg-gray-50/60">
+                <span className="text-xs text-gray-400">Joined {formatDate(f.users?.created_at)}</span>
+                {actions(f)}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-gray-100 shadow-sm bg-white">
           <table className="w-full text-sm">
@@ -212,87 +372,74 @@ export default function AdminFacilities() {
                 <th className="text-left px-5 py-4 font-semibold">Facility</th>
                 <th className="text-left px-5 py-4 font-semibold">Contact</th>
                 <th className="text-left px-5 py-4 font-semibold">Status</th>
+                <th className="text-left px-5 py-4 font-semibold">Profile</th>
                 <th className="text-left px-5 py-4 font-semibold">Shifts</th>
-                <th className="text-left px-5 py-4 font-semibold">Joined</th>
                 <th className="px-5 py-4" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((f) => {
-                const acctStatus = f.users?.account_status || 'active';
-                const isPending = acctStatus === 'pending_invite' || acctStatus === 'expired';
-                return (
-                  <tr key={f.user_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="flex items-start gap-3">
-                        <Avatar src={f.users?.avatar_url} name={f.facility_name} size="sm" shape="rounded" />
-                        <div>
-                          <p className="font-semibold text-gray-900">{f.facility_name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>
-                          {f.address && (
-                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3" />{f.address}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="flex items-center gap-1.5 text-gray-600">
-                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                        {f.users?.email || '—'}
-                      </p>
-                      {f.users?.phone && (
-                        <p className="flex items-center gap-1.5 text-gray-500 text-xs mt-1">
-                          <Phone className="w-3 h-3 text-gray-400 shrink-0" />
-                          {f.users.phone}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={acctStatus} />
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold">
-                        {f.shift_stats?.open || 0} open
-                      </span>
-                      <p className="text-xs text-gray-400 mt-1">{f.shift_stats?.total || 0} total</p>
-                    </td>
-                    <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(f.users?.created_at)}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1 justify-end">
-                        {isPending && (
-                          <button
-                            onClick={() => handleResend(f)}
-                            disabled={resendingId === f.user_id}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                            title="Resend invite"
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
+              {filtered.map((f) => (
+                <tr key={f.user_id} onClick={() => setViewing(f.user_id)} className="hover:bg-teal-50/40 transition-colors cursor-pointer">
+                  <td className="px-5 py-4 min-w-[260px]">
+                    <div className="flex items-center gap-3">
+                      <Avatar src={f.users?.avatar_url} name={f.facility_name} size="lg" shape="rounded" />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900">{f.facility_name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>
+                        {f.address && (
+                          <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3" />{f.address}
+                          </p>
                         )}
-                        <button
-                          onClick={() => openEdit(f)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(f)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="flex items-center gap-1.5 text-gray-600 max-w-[260px] truncate">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      {f.users?.email || '—'}
+                    </p>
+                    {f.users?.phone && (
+                      <p className="flex items-center gap-1.5 text-gray-500 text-xs mt-1">
+                        <Phone className="w-3 h-3 text-gray-400 shrink-0" />
+                        {f.users.phone}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-5 py-4">
+                    <AccountStatusBadge status={f.users?.account_status || 'active'} />
+                    <p className="text-xs text-gray-400 mt-1.5 whitespace-nowrap">Joined {formatDate(f.users?.created_at)}</p>
+                  </td>
+                  <td className="px-5 py-4 min-w-[120px]">
+                    <CompletenessBar result={f._completeness} showLabel={false} />
+                    <p className="text-xs text-gray-500 mt-1.5 whitespace-nowrap">{f._completeness.done}/{f._completeness.total} complete</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 text-xs font-semibold">
+                      {f.shift_stats?.open || 0} open
+                    </span>
+                    <p className="text-xs text-gray-400 mt-1">{f.shift_stats?.total || 0} total</p>
+                    <div className="mt-1"><RatingPill rating={f.rating} /></div>
+                  </td>
+                  <td className="px-5 py-4">{actions(f)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Profile viewer */}
+      {viewing && (
+        <FacilityProfileView
+          key={`${viewing}-${viewKey}`}
+          userId={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={openEdit}
+          onResend={handleResend}
+          onDelete={setDeleteTarget}
+          resending={resendingId === viewing}
+        />
       )}
 
       {/* Add / Edit Modal */}
