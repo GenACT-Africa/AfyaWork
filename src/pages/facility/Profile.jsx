@@ -11,6 +11,7 @@ import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
 import { MapLocationField } from '../../components/common/MapLocationField';
 import { locationProblem, locationPayload } from '../../lib/maps';
+import { normaliseTzPhone, phoneProblem } from '../../lib/phone';
 
 const HFR_NOTES = {
   operating:     ['text-green-700', 'Found on the Health Facility Registry'],
@@ -86,13 +87,15 @@ export default function FacilityProfile() {
 
   async function handleSave(e) {
     e.preventDefault();
+    const phone = normaliseTzPhone(form.phone);
+    if (!phone) { show(phoneProblem(form.phone), 'error'); return; }
     const problem = locationProblem(location);
     setLocationError(problem ? t(problem) : '');
     if (problem) { show(t(problem), 'error'); return; }
     setSaving(true);
     const codeChanged = (form.hfr_code.trim() || null) !== (profile?.hfr_code || null);
     const [, { error }] = await Promise.all([
-      updateUserProfile(user.id, { phone: form.phone, bio: form.bio }),
+      updateUserProfile(user.id, { phone, bio: form.bio }),
       updateFacilityProfile(user.id, {
         facility_name: form.facility_name,
         facility_type: form.facility_type,
@@ -170,7 +173,7 @@ export default function FacilityProfile() {
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Facility Name" value={form.facility_name} onChange={set('facility_name')} required />
               <Input label="Contact Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />
-              <Input label="Contact Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required pattern="\s*(\+?255|0)[\s\-]*[67]([\s\-]*\d){8}\s*" title="A Tanzanian mobile number, e.g. 0712 345 678" />
+              <Input label="Contact Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required />
               <Select label="Facility Type" value={form.facility_type} onChange={set('facility_type')}>
                 <option value="">Select type</option>
                 <option value="Private Clinic">Private Clinic</option>

@@ -10,11 +10,8 @@ import { recordTosAgreement } from '../lib/api';
 import { MapLocationField } from '../components/common/MapLocationField';
 import { locationProblem, locationPayload } from '../lib/maps';
 import { dashboardFor } from '../lib/roles';
+import { normaliseTzPhone, phoneProblem } from '../lib/phone';
 
-/** Tanzanian mobile: 07xx / 06xx xxx xxx, or with +255 / 255. Spaces and dashes allowed. */
-function isTzPhone(raw) {
-  return /^(?:\+?255|0)[67]\d{8}$/.test(String(raw || '').replace(/[\s-]/g, ''));
-}
 
 export function RegisterPage() {
   const [params] = useSearchParams();
@@ -53,7 +50,7 @@ export function RegisterPage() {
     if (form.password.length < 6) { setError(t('auth.err_password')); return; }
     if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
     if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
-    if (!isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
+    if (!normaliseTzPhone(form.phone)) { setError(phoneProblem(form.phone)); return; }
     if (role === 'facility' && locationProblem(location)) { setError(t(locationProblem(location))); return; }
 
     if (!tosAgreed) { setError('You must agree to the Terms of Service and Privacy Policy to continue.'); return; }
@@ -64,7 +61,7 @@ export function RegisterPage() {
       password: form.password,
       role,
       display_name: role === 'facility' ? form.facility_name : form.display_name,
-      phone: form.phone.trim() || undefined,
+      phone: normaliseTzPhone(form.phone),
       ...(role === 'co'
         ? { license_number: form.license_number, specialization: form.specialization }
         : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address, hfr_code: form.hfr_code.trim(),

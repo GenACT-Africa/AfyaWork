@@ -8,6 +8,7 @@ import { Modal } from '../../components/admin/ShiftAdminForms';
 import { useToast } from '../../components/common/Toast';
 import { formatDate } from '../../components/admin/profileUtils';
 import { adminResendInvite } from '../../lib/api';
+import { normaliseTzPhone, phoneProblem } from '../../lib/phone';
 import { listCoordinators, inviteCoordinator, setCoordinatorAccess, reassignLeads, getLeadStaff } from '../../lib/leadsApi';
 
 const STATUS = {
@@ -89,8 +90,10 @@ export default function AdminCoordinators() {
   async function invite(e) {
     e.preventDefault();
     setFormError('');
+    const phone = form.phone.trim() ? normaliseTzPhone(form.phone) : '';
+    if (form.phone.trim() && !phone) { setFormError(phoneProblem(form.phone)); return; }
     setBusy('invite');
-    const { error: err, mailError } = await inviteCoordinator(form);
+    const { error: err, mailError } = await inviteCoordinator({ ...form, phone });
     setBusy('');
     if (err) { setFormError(err.message); return; }
     setInviting(false);
@@ -196,7 +199,7 @@ export default function AdminCoordinators() {
           <form onSubmit={invite} className="space-y-4">
             <Input label="Full name" value={form.display_name} onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))} required />
             <Input label="Work email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required />
-            <Input label="Phone (optional)" type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+255 7xx xxx xxx" />
+            <Input label="Phone (optional)" type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="0748 795 514 or +255 748 795 514" />
             {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">{formError}</p>}
             <div className="flex gap-3">
               <Button type="button" variant="secondary" className="flex-1" onClick={() => setInviting(false)}>Cancel</Button>

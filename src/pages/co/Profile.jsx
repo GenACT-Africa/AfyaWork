@@ -10,6 +10,7 @@ import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
 import { useICA } from '../../components/legal/ICAGate';
+import { normaliseTzPhone, phoneProblem } from '../../lib/phone';
 
 const TIERS = [
   { key: 'msingi', label: 'Msingi (Free)', price: 'TZS 0/mo', desc: 'Standard matching — shifts visible 30 min after paid tiers', icon: Stethoscope },
@@ -208,9 +209,11 @@ export default function COProfile() {
 
   async function handleSave(e) {
     e.preventDefault();
+    const phone = normaliseTzPhone(form.phone);
+    if (!phone) { show(phoneProblem(form.phone), 'error'); return; }
     setSaving(true);
     await Promise.all([
-      updateUserProfile(user.id, { display_name: form.display_name, phone: form.phone, bio: form.bio }),
+      updateUserProfile(user.id, { display_name: form.display_name, phone, bio: form.bio }),
       updateCOProfile(user.id, { specialization: form.specialization }),
     ]);
     setSaving(false);
@@ -369,7 +372,7 @@ export default function COProfile() {
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Full Name" value={form.display_name} onChange={set('display_name')} required />
               <Input label="Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />
-              <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required pattern="\s*(\+?255|0)[\s\-]*[67]([\s\-]*\d){8}\s*" title="A Tanzanian mobile number, e.g. 0712 345 678" />
+              <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required />
               <div>
                 <Input label="License Number" value={profile?.license_number || ''} disabled className="bg-gray-50 text-gray-500" />
                 <MctLicenceNote profile={profile} />
