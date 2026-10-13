@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Stethoscope, Eye, EyeOff, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { dashboardFor } from '../lib/roles';
 
 // ── Password strength ─────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export default function InviteSetup() {
 
     // 3 — Show success, then redirect
     setStatus('done');
-    const dest = userInfo.role === 'facility' ? '/facility/dashboard' : '/co/dashboard';
+    const dest = dashboardFor(userInfo.role);
     setTimeout(() => navigate(dest, { replace: true }), 2500);
   }
 

@@ -31,13 +31,19 @@ serve(async (req) => {
     const inviteUrl  = `${APP_URL}/invite/setup?token=${invite_token}`;
     const name       = display_name ?? (role === 'facility' ? facility_name : null) ?? 'there';
     const isFacility = role === 'facility';
+    const isCoordinator = role === 'coordinator';
 
     const contact = { adminEmail: ADMIN_EMAIL, adminPhone: ADMIN_PHONE, adminWhatsApp: ADMIN_WHATSAPP };
 
     let subject: string;
     let html: string;
 
-    if (is_resend) {
+    if (isCoordinator) {
+      subject = is_resend
+        ? 'Reminder: set up your AfyaWork coordinator account'
+        : 'Your AfyaWork coordinator account';
+      html = coordinatorTemplate({ name, inviteUrl, contact });
+    } else if (is_resend) {
       subject = isFacility
         ? 'Reminder: Your AfyaWork facility invitation is still waiting'
         : 'Reminder: Your AfyaWork invite is about to expire';
@@ -156,6 +162,37 @@ function facilityTemplate({ name, facility_name, inviteUrl, contact }: {
 
     ${expireNote()}
     ${ctaButton(inviteUrl)}
+    ${fallbackLink(inviteUrl)}
+    ${contactFooter(contact)}
+  </div>
+</div>`;
+}
+
+// ── Template: Coordinator (staff) ────────────────────────────────
+
+function coordinatorTemplate({ name, inviteUrl, contact }: {
+  name: string; inviteUrl: string; contact: Contact;
+}) {
+  return `
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;color:#111827;background:#f9fafb;padding:20px 0;">
+  <div style="background:#07423a;padding:28px 32px 24px;border-radius:14px 14px 0 0;">
+    <p style="margin:0 0 4px;color:rgba(255,255,255,0.7);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;">AfyaWork · Staff</p>
+    <h1 style="margin:0;color:#fff;font-size:24px;font-weight:700;line-height:1.2;">Welcome to the team,<br/>${name}</h1>
+  </div>
+  <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 14px 14px;">
+    <p style="margin:0 0 16px;font-size:15px;">Hi ${name},</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">
+      AfyaWork has set up your <strong>coordinator</strong> account. You'll use it on your phone to take
+      facilities from first contact to their first shift: the lead pipeline, your follow-ups for the day,
+      and the onboarding playbook.
+    </p>
+    <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6;">
+      Use the button below to choose your password. The link works once. After that, sign in at
+      <a href="${APP_URL}/auth/login" style="color:#0d9488;">${APP_URL.replace(/^https?:\/\//, '')}</a>.
+      Keep your phone locked, and tell AfyaWork straight away if it is lost.
+    </p>
+    ${expireNote()}
+    ${ctaButton(inviteUrl, 'Set up my account →')}
     ${fallbackLink(inviteUrl)}
     ${contactFooter(contact)}
   </div>

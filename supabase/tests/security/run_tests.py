@@ -397,6 +397,105 @@ expect_ok("facility switches to GPS position", F5,
 ok, out, _ = as_user(C1, f"SELECT location_lat FROM public.facility_profiles WHERE user_id='{F3}';")
 check("ALLOW: CO can read facility location (for directions)", out.strip() == "-6.895200", out)
 
+# ── 14. Coordinators & facility leads ──────────────────────────────────────
+def staff_signup(email, name, app_role=None, user_role=None):
+    uid = str(uuid.uuid4())
+    app = json.dumps({"provider": "email", **({"afyawork_role": app_role} if app_role else {})})
+    meta = json.dumps({"display_name": name, **({"role": user_role} if user_role else {})})
+    ok, (out, err) = run(f"""INSERT INTO auth.users (id, email, raw_app_meta_data, raw_user_meta_data, aud, role)
+        VALUES ('{uid}', '{email}', '{app}'::jsonb, '{meta}'::jsonb, 'authenticated', 'authenticated');""",
+        user="supabase_auth_admin")
+    return uid if ok else None, err
+
+fake, _ = staff_signup("fake-coord@test.tz", "Fake", user_role="coordinator")
+check("BLOCK: public signup as coordinator", not fake or admin_sql(f"SELECT count(*) FROM public.users WHERE id='{fake}'") == "0")
+K1, e1 = staff_signup("k1@afyawork.test", "Neema Coordinator", app_role="coordinator")
+K2, e2 = staff_signup("k2@afyawork.test", "Juma Coordinator", app_role="coordinator")
+check("ALLOW: admin-created coordinator gets the coordinator role",
+      K1 and admin_sql(f"SELECT role FROM public.users WHERE id='{K1}'") == "coordinator", e1[:120])
+
+for tbl in ["facility_profiles", "co_profiles", "co_mct_checks", "shifts", "applications", "facility_hfr_checks",
+            "shift_payments", "co_mobile_money", "admin_shift_actions", "system_config"]:
+    ok, out, _ = as_user(K1, f"SELECT count(*) FROM public.{tbl};")
+    check(f"BLOCK: coordinator reads {tbl}", (not ok) or out.strip() == "0", out)
+ok, out, _ = as_user(K1, "SELECT count(*) FROM public.users;")
+check("BLOCK: coordinator reads other users (own row only)", out.strip() == "1", out)
+expect_blocked("coordinator updates a facility profile", K1,
+    f"UPDATE public.facility_profiles SET facility_name='Hacked' WHERE user_id='{F}';",
+    verify=lambda: admin_sql(f"SELECT facility_name FROM public.facility_profiles WHERE user_id='{F}'") == "Hacked")
+ok, out, _ = as_user(C1, "SELECT count(*) FROM public.facility_leads;")
+check("BLOCK: CO reads leads", (not ok) or out.strip() == "0", out)
+expect_blocked("facility adds a lead", F, "INSERT INTO public.facility_leads (name) VALUES ('Sneaky');")
+
+L1 = last(expect_ok("coordinator adds a lead (owner = self)", K1,
+    "INSERT INTO public.facility_leads (name, hfr_code, official_phone) VALUES ('Morcep', ' 1250398 ', '0754051704') RETURNING id;"))
+check("ALLOW: lead owner defaults to the coordinator, code normalised",
+      admin_sql(f"SELECT owner_id||'/'||hfr_code FROM public.facility_leads WHERE id='{L1}'") == f"{K1}/125039-8")
+expect_blocked("coordinator adds a lead owned by someone else", K1,
+    f"INSERT INTO public.facility_leads (name, owner_id) VALUES ('X', '{K2}');")
+expect_blocked("coordinator sets a facility link on insert", K1,
+    f"INSERT INTO public.facility_leads (name, facility_profile_id) VALUES ('Y', '{F}');")
+ok, out, err = as_user(K2, "INSERT INTO public.facility_leads (name, hfr_code) VALUES ('Morcep again', '125039-8');")
+check("BLOCK: duplicate HFR code names the existing lead", (not ok) and 'Morcep' in err, err[:160])
+expect_ok("coordinator edits notes and follow-up date", K2,
+    f"UPDATE public.facility_leads SET notes='Asked for the medical director', due_date=current_date + 3 WHERE id='{L1}';")
+expect_blocked("coordinator changes lead owner", K2, f"UPDATE public.facility_leads SET owner_id='{K2}' WHERE id='{L1}';",
+    verify=lambda: admin_sql(f"SELECT owner_id FROM public.facility_leads WHERE id='{L1}'") == K2)
+expect_blocked("coordinator sets HFR result directly", K1, f"UPDATE public.facility_leads SET hfr_status='operating' WHERE id='{L1}';",
+    verify=lambda: admin_sql(f"SELECT coalesce(hfr_status,'') FROM public.facility_leads WHERE id='{L1}'") == "operating")
+expect_blocked("coordinator links a lead to a facility", K1, f"UPDATE public.facility_leads SET facility_profile_id='{F}' WHERE id='{L1}';",
+    verify=lambda: admin_sql(f"SELECT coalesce(facility_profile_id::text,'') FROM public.facility_leads WHERE id='{L1}'") == F)
+expect_blocked("coordinator deletes a lead", K1, f"DELETE FROM public.facility_leads WHERE id='{L1}';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM public.facility_leads WHERE id='{L1}'") == "0")
+expect_blocked("coordinator calls admin_reassign_leads", K1, f"SELECT public.admin_reassign_leads('{K1}', '{K2}');",
+    verify=lambda: admin_sql(f"SELECT owner_id FROM public.facility_leads WHERE id='{L1}'") == K2)
+expect_blocked("coordinator approves a facility", K1, f"SELECT public.admin_set_facility_verification('{F}', true, 'x');")
+expect_blocked("coordinator calls an admin shift RPC", K1, f"SELECT public.admin_create_shift('{F}', current_date + 4, 'Weekend', 40000);")
+
+expect_ok("coordinator ticks a manual step", K1, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '2a');",
+    verify=lambda: admin_sql(f"SELECT done_by FROM public.lead_steps WHERE lead_id='{L1}' AND step_id='2a'") == K1)
+expect_blocked("coordinator stores an auto step (6g approved)", K1, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '6g');")
+expect_blocked("coordinator stores an auto step (1b operating)", K1, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '1b');")
+expect_blocked("coordinator ticks admin-only step 6e", K1, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '6e');")
+expect_ok("admin ticks 6e (official phone call)", ADMIN, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '6e');")
+expect_blocked("coordinator unticks admin-only step 6e", K1, f"DELETE FROM public.lead_steps WHERE lead_id='{L1}' AND step_id='6e';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM public.lead_steps WHERE lead_id='{L1}' AND step_id='6e'") == "0")
+expect_ok("coordinator unticks a manual step", K2, f"DELETE FROM public.lead_steps WHERE lead_id='{L1}' AND step_id='2a';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM public.lead_steps WHERE lead_id='{L1}' AND step_id='2a'") == "0")
+ok, out, _ = as_user(K1, "SELECT count(*) FROM public.lead_events;")
+check("BLOCK: coordinator reads the audit trail", out.strip() == "0", out)
+check("ALLOW: audit trail records create, edit and ticks",
+      admin_sql(f"SELECT string_agg(DISTINCT action, ',' ORDER BY action) FROM public.lead_events WHERE lead_id='{L1}'")
+      == "created,step_ticked,step_unticked")
+ok, out, _ = as_user(K1, "SELECT count(*) FROM public.lead_staff();")
+check("ALLOW: coordinator lists staff names", ok and int(out.strip() or 0) >= 3, out)
+expect_blocked("CO lists lead staff", C1, "SELECT * FROM public.lead_staff();")
+
+L2 = last(expect_ok("coordinator adds lead for a facility already on AfyaWork", K1,
+    "INSERT INTO public.facility_leads (name, hfr_code) VALUES ('Morcep branch', '2222229') RETURNING id;"))
+check("ALLOW: lead links itself to the facility with that HFR code",
+      admin_sql(f"SELECT facility_profile_id FROM public.facility_leads WHERE id='{L2}'") == F3)
+L3 = last(expect_ok("coordinator adds lead before the facility signs up", K2,
+    "INSERT INTO public.facility_leads (name, hfr_code) VALUES ('Future Clinic', '333333-4') RETURNING id;"))
+F6, _ = signup("fac6@test.tz", {"role": "facility", "display_name": "Future Clinic", "facility_name": "Future Clinic",
+                                "hfr_code": "3333334", "location_lat": "-6.8", "location_lng": "39.2"})
+check("ALLOW: facility signing up with the code gets linked to the lead",
+      admin_sql(f"SELECT facility_profile_id FROM public.facility_leads WHERE id='{L3}'") == F6)
+
+expect_ok("admin reassigns a coordinator's leads", ADMIN, f"SELECT public.admin_reassign_leads('{K2}', '{K1}');",
+    verify=lambda: admin_sql(f"SELECT owner_id FROM public.facility_leads WHERE id='{L3}'") == K1)
+admin_sql(f"UPDATE public.users SET account_status='disabled' WHERE id='{K2}';")
+ok, out, _ = as_user(K2, "SELECT count(*) FROM public.facility_leads;")
+check("BLOCK: revoked coordinator reads leads", (not ok) or out.strip() == "0", out)
+expect_blocked("revoked coordinator adds a lead", K2, "INSERT INTO public.facility_leads (name) VALUES ('After revoke');")
+expect_blocked("revoked coordinator ticks a step", K2, f"INSERT INTO public.lead_steps (lead_id, step_id) VALUES ('{L1}', '2b');")
+ok, out, _ = as_user(K2, "SELECT count(*) FROM public.facility_profiles;")
+check("BLOCK: revoked coordinator reads facilities", out.strip() == "0", out)
+expect_blocked("revoked coordinator reactivates self", K2, f"UPDATE public.users SET account_status='active' WHERE id='{K2}';",
+    verify=lambda: admin_sql(f"SELECT account_status FROM public.users WHERE id='{K2}'") == "active")
+expect_ok("admin deletes a lead", ADMIN, f"DELETE FROM public.facility_leads WHERE id='{L2}';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM public.lead_events WHERE lead_id='{L2}' AND action='deleted'") == "1")
+
 # ── Report ───────────────────────────────────────────────────────────────────
 passed = sum(1 for _, ok, _ in results if ok)
 for name, ok, detail in results:

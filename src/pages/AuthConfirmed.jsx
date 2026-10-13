@@ -11,6 +11,7 @@ import { Stethoscope, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LanguageToggle } from '../components/common/LanguageToggle';
+import { dashboardFor } from '../lib/roles';
 
 export default function AuthConfirmed() {
   const { user, role, loading } = useAuth();
@@ -20,10 +21,7 @@ export default function AuthConfirmed() {
     if (loading) return;
     if (!user || !role) return; // still waiting for Supabase to process token
 
-    const dest =
-      role === 'admin'    ? '/admin/dashboard'    :
-      role === 'facility' ? '/facility/dashboard' :
-                            '/co/dashboard';
+    const dest = dashboardFor(role);
 
     navigate(dest, { replace: true });
   }, [user, role, loading, navigate]);

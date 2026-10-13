@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { ShiftCardSkeleton } from '../components/common/Skeleton';
 import { LanguageToggle } from '../components/common/LanguageToggle';
+import { dashboardFor } from '../lib/roles';
 
 const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-6AM)', '24-Hour', 'Weekend'];
 
@@ -13,7 +14,7 @@ export default function Landing() {
   const { t } = useTranslation();
   const { user, role, signOut, loading: authLoading } = useAuth();
 
-  const dashboardUrl = role === 'co' ? '/co/dashboard' : role === 'facility' ? '/facility/dashboard' : '/admin/dashboard';
+  const dashboardUrl = dashboardFor(role);
   const navigate = useNavigate();
 
 const [shifts, setShifts] = useState([]);

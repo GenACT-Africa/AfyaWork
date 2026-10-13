@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Stethoscope, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { dashboardFor } from '../lib/roles';
 
 export default function NotFound() {
   const { user, role } = useAuth();
-  const home = user ? (role === 'facility' ? '/facility/dashboard' : '/co/dashboard') : '/';
+  const home = user ? dashboardFor(role) : '/';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 text-center">

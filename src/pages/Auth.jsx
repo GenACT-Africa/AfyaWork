@@ -9,6 +9,7 @@ import { LanguageToggle } from '../components/common/LanguageToggle';
 import { recordTosAgreement } from '../lib/api';
 import { MapLocationField } from '../components/common/MapLocationField';
 import { locationProblem, locationPayload } from '../lib/maps';
+import { dashboardFor } from '../lib/roles';
 
 /** Tanzanian mobile: 07xx / 06xx xxx xxx, or with +255 / 255. Spaces and dashes allowed. */
 function isTzPhone(raw) {
@@ -26,7 +27,7 @@ export function RegisterPage() {
 
   useEffect(() => {
     if (!authLoading && user && authRole) {
-      const dest = authRole === 'admin' ? '/admin/dashboard' : authRole === 'facility' ? '/facility/dashboard' : '/co/dashboard';
+      const dest = dashboardFor(authRole);
       navigate(dest, { replace: true });
     }
   }, [user, authRole, authLoading, navigate]);
@@ -230,7 +231,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && user && role) {
-      const dest = role === 'admin' ? '/admin/dashboard' : role === 'facility' ? '/facility/dashboard' : '/co/dashboard';
+      const dest = dashboardFor(role);
       navigate(dest, { replace: true });
     }
   }, [user, role, authLoading, navigate]);
