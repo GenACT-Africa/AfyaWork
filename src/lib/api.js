@@ -1384,3 +1384,89 @@ export function friendlyHfrError(error) {
   }
   return error;
 }
+
+// ─── Admin: manage shifts and applications (SECURITY DEFINER RPCs) ─────────
+
+const rpc = async (fn, args) => {
+  const { data, error } = await supabase.rpc(fn, args);
+  return { data, error };
+};
+
+/** Admin: one shift with facility, assigned CO, applicants (with CO profile) and the admin action log. */
+export async function getAdminShiftDetail(shiftId) {
+  const { data: shift, error } = await supabase.from('shifts').select('*').eq('id', shiftId).single();
+  if (error) return { data: null, error };
+
+  const [{ data: facility }, { data: apps }, { data: log }] = await Promise.all([
+    supabase.from('facility_profiles')
+      .select('user_id, facility_name, facility_type, address, verified, users(phone, email, display_name)')
+      .eq('user_id', shift.facility_id).single(),
+    supabase.from('applications').select('id, co_id, status, applied_at').eq('shift_id', shiftId)
+      .order('applied_at', { ascending: true }),
+    supabase.from('admin_shift_actions').select('id, action, co_id, detail, note, created_at, admin_id')
+      .eq('shift_id', shiftId).order('created_at', { ascending: false }),
+  ]);
+
+  const coIds = [...new Set([...(apps || []).map((a) => a.co_id), shift.assigned_co_id,
+    ...(log || []).map((l) => l.co_id), ...(log || []).map((l) => l.admin_id)].filter(Boolean))];
+  const [{ data: users }, { data: cos }] = coIds.length
+    ? await Promise.all([
+        supabase.from('users').select('id, display_name, phone, email, avatar_url').in('id', coIds),
+        supabase.from('co_profiles').select('user_id, license_number, specialization, verified, mct_status, ica_signed_at').in('user_id', coIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const userMap = Object.fromEntries((users || []).map((u) => [u.id, u]));
+  const coMap = Object.fromEntries((cos || []).map((c) => [c.user_id, c]));
+
+  return {
+    data: {
+      ...shift,
+      facility: facility || null,
+      co_user: shift.assigned_co_id ? userMap[shift.assigned_co_id] || null : null,
+      applicants: (apps || []).map((a) => ({ ...a, user: userMap[a.co_id] || null, co: coMap[a.co_id] || null })),
+      log: (log || []).map((l) => ({ ...l, co_name: userMap[l.co_id]?.display_name, admin_name: userMap[l.admin_id]?.display_name })),
+    },
+    error: null,
+  };
+}
+
+/** Admin: COs for the "add applicant" picker. */
+export async function getAdminCOOptions() {
+  const { data, error } = await supabase
+    .from('co_profiles')
+    .select('user_id, license_number, verified, mct_status, ica_signed_at, users!user_id(display_name, phone, account_status)')
+    .order('user_id');
+  return {
+    data: (data || []).map((c) => ({ ...c, name: c.users?.display_name || 'Unnamed CO' }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    error,
+  };
+}
+
+/** Admin: facilities for the "post shift" picker. */
+export async function getAdminFacilityOptions() {
+  const { data, error } = await supabase
+    .from('facility_profiles').select('user_id, facility_name, address, verified').order('facility_name');
+  return { data: data || [], error };
+}
+
+export const adminCreateShift = ({ facility_id, shift_date, shift_type, pay_amount, description, note }) =>
+  rpc('admin_create_shift', { p_facility_id: facility_id, p_shift_date: shift_date, p_shift_type: shift_type,
+    p_pay_amount: Number(pay_amount), p_description: description || null, p_note: note || null });
+
+export const adminUpdateShift = (shiftId, { shift_date, shift_type, pay_amount, description, note }) =>
+  rpc('admin_update_shift', { p_shift_id: shiftId, p_shift_date: shift_date, p_shift_type: shift_type,
+    p_pay_amount: Number(pay_amount), p_description: description || null, p_note: note || null });
+
+export const adminCancelShift = (shiftId, reason) => rpc('admin_cancel_shift', { p_shift_id: shiftId, p_reason: reason });
+
+export const adminUnassignCO = (shiftId, reason) => rpc('admin_unassign_co', { p_shift_id: shiftId, p_reason: reason || null });
+
+export const adminApproveApplication = (applicationId, note) =>
+  rpc('admin_approve_application', { p_application_id: applicationId, p_note: note || null });
+
+export const adminSetApplicationStatus = (applicationId, status, note) =>
+  rpc('admin_set_application_status', { p_application_id: applicationId, p_status: status, p_note: note || null });
+
+export const adminAddApplicant = (shiftId, coId, note) =>
+  rpc('admin_add_applicant', { p_shift_id: shiftId, p_co_id: coId, p_note: note || null });

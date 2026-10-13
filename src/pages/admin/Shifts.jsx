@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   CalendarDays, Search, Users, AlertTriangle, CheckCircle2,
-  X, ShieldCheck, XCircle,
+  X, ShieldCheck, XCircle, Plus, ChevronRight,
 } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { useToast } from '../../components/common/Toast';
-import { getAdminShifts, resolveDispute } from '../../lib/api';
+import { getAdminShifts, resolveDispute, getAdminFacilityOptions, adminCreateShift } from '../../lib/api';
+import { AdminShiftDrawer } from '../../components/admin/AdminShiftDrawer';
+import { ShiftFormModal } from '../../components/admin/ShiftAdminForms';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -123,6 +125,10 @@ export default function AdminShifts() {
   const [resolveNote, setResolveNote]     = useState('');
   const [resolving, setResolving]         = useState(false);
 
+  // Manage drawer + post-shift modal
+  const [viewing, setViewing]             = useState(null);   // shift id
+  const [posting, setPosting]             = useState(null);   // facility options while the modal is open
+
   // Read ?status= from URL on first mount
   useEffect(() => {
     const params = new URLSearchParams(queryString);
@@ -143,7 +149,8 @@ export default function AdminShifts() {
       const matchesSearch =
         s.facility_profiles?.facility_name?.toLowerCase().includes(q) ||
         s.shift_type?.toLowerCase().includes(q) ||
-        s.co_user?.display_name?.toLowerCase().includes(q);
+        s.co_user?.display_name?.toLowerCase().includes(q) ||
+        String(s.pay_amount).includes(q);
       const matchesStatus =
         statusFilter === 'all'
           ? true
@@ -175,13 +182,27 @@ export default function AdminShifts() {
     loadShifts();
   }
 
+  async function openPostShift() {
+    const { data, error } = await getAdminFacilityOptions();
+    if (error) { show(error.message, 'error'); return; }
+    setPosting(data);
+  }
+
+  function openResolve(s) {
+    setViewing(null);
+    setResolveModal(s); setResolution('approve'); setResolveNote('');
+  }
+
   return (
     <PageWrapper
       title="All Shifts"
-      subtitle={`${shifts.length} shifts on the platform`}
+      subtitle={`${shifts.length} shifts on the platform · click a shift to manage it`}
+      action={
+        <Button size="sm" onClick={openPostShift}>
+          <Plus className="w-4 h-4" /> Post shift
+        </Button>
+      }
     >
-      {ToastComponent}
-
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1 max-w-sm">
@@ -257,7 +278,8 @@ export default function AdminShifts() {
                 return (
                   <tr
                     key={s.id}
-                    className={`transition-colors ${isDisputed ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-gray-50'}`}
+                    onClick={() => setViewing(s.id)}
+                    className={`cursor-pointer transition-colors ${isDisputed ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-teal-50/40'}`}
                   >
                     <td className="px-5 py-4">
                       <p className="font-semibold text-gray-900 capitalize">{s.shift_type}</p>
@@ -292,15 +314,19 @@ export default function AdminShifts() {
                     <td className="px-5 py-4 text-gray-500 text-xs hidden lg:table-cell">
                       {formatDate(s.created_at)}
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      {isDisputed && (
+                    <td className="px-5 py-4 text-right whitespace-nowrap">
+                      {isDisputed ? (
                         <button
-                          onClick={() => { setResolveModal(s); setResolution('approve'); setResolveNote(''); }}
+                          onClick={(e) => { e.stopPropagation(); openResolve(s); }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors whitespace-nowrap"
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
                           Resolve
                         </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-teal-700">
+                          Manage <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -309,6 +335,35 @@ export default function AdminShifts() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* ── Manage one shift ── */}
+      {viewing && (
+        <AdminShiftDrawer
+          key={viewing}
+          shiftId={viewing}
+          onClose={() => setViewing(null)}
+          onChanged={loadShifts}
+          onResolveDispute={openResolve}
+          notify={(m) => show(m, 'success')}
+        />
+      )}
+
+      {/* ── Post a shift for a facility ── */}
+      {posting && (
+        <ShiftFormModal
+          facilities={posting}
+          onClose={() => setPosting(null)}
+          onSubmit={async (f) => {
+            const r = await adminCreateShift(f);
+            if (!r.error) {
+              show('Shift posted — the facility and COs are notified.', 'success');
+              loadShifts();
+              setViewing(r.data);
+            }
+            return r;
+          }}
+        />
       )}
 
       {/* ── Dispute resolution modal ── */}
@@ -428,6 +483,8 @@ export default function AdminShifts() {
           </div>
         </div>
       )}
+      {/* Last, so toasts show above the drawer */}
+      {ToastComponent}
     </PageWrapper>
   );
 }

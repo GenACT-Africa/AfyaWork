@@ -237,6 +237,8 @@ function ClosedState({ shift, coName, facilityName, role }) {
     message = `Shift cancelled by ${role === 'co' ? 'you' : (coName || 'the CO')}`;
   } else if (shift.cancelled_by === 'facility') {
     message = `Shift cancelled by ${role === 'facility' ? 'you' : (facilityName || 'the facility')}`;
+  } else if (shift.cancelled_by === 'admin') {
+    message = 'Shift cancelled by AfyaWork';
   } else {
     message = 'Shift cancelled';
   }

@@ -298,6 +298,74 @@ expect_ok("facility changes HFR code → verification reset", F3,
     f"UPDATE public.facility_profiles SET hfr_code='2222229' WHERE user_id='{F3}';",
     verify=lambda: admin_sql(f"SELECT hfr_code||'/'||hfr_status||'/'||verified FROM public.facility_profiles WHERE user_id='{F3}'") == "222222-9/unchecked/false")
 
+# ── 12. Admin shift & application management ─────────────────────────────────
+def n_notes(uid, ntype):
+    return admin_sql(f"SELECT count(*) FROM public.notifications WHERE user_id='{uid}' AND type='{ntype}'")
+expect_blocked("facility calls admin_create_shift", F,
+    f"SELECT public.admin_create_shift('{F}', current_date + 4, 'Weekend', 40000);")
+expect_blocked("admin posts a shift for a CO account", ADMIN,
+    f"SELECT public.admin_create_shift('{C1}', current_date + 4, 'Weekend', 40000);")
+S4 = last(expect_ok("admin posts a shift for a facility", ADMIN,
+    f"SELECT public.admin_create_shift('{F}', current_date + 4, 'Weekend', 40000, 'Cover for leave', 'phoned in');"))
+check("ALLOW: facility told AfyaWork posted a shift", n_notes(F, 'shift_posted_by_admin') == "1")
+expect_ok("admin adds CO as applicant", ADMIN, f"SELECT public.admin_add_applicant('{S4}', '{C1}', 'called us');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.applications WHERE shift_id='{S4}' AND co_id='{C1}'") == "pending")
+check("ALLOW: CO told they were added", n_notes(C1, 'added_as_applicant') == "1")
+expect_blocked("admin adds CO without signed ICA", ADMIN, f"SELECT public.admin_add_applicant('{S4}', '{C3}');")
+expect_blocked("admin adds same CO twice", ADMIN, f"SELECT public.admin_add_applicant('{S4}', '{C1}');")
+A4b = last(expect_ok("CO applies normally", C2, f"INSERT INTO public.applications (shift_id, co_id) VALUES ('{S4}','{C2}') RETURNING id;"))
+expect_ok("admin rejects an application", ADMIN, f"SELECT public.admin_set_application_status('{A4b}', 'rejected', 'not a fit');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.applications WHERE id='{A4b}'") == "rejected")
+check("ALLOW: CO told application not selected", n_notes(C2, 'application_rejected') == "1")
+expect_ok("admin restores an application", ADMIN, f"SELECT public.admin_set_application_status('{A4b}', 'pending');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.applications WHERE id='{A4b}'") == "pending")
+expect_blocked("admin sets application approved via status RPC", ADMIN,
+    f"SELECT public.admin_set_application_status('{A4b}', 'approved');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.applications WHERE id='{A4b}'") == "approved")
+expect_ok("admin edits pay on open shift", ADMIN,
+    f"SELECT public.admin_update_shift('{S4}', current_date + 4, 'Weekend', 45000, 'Cover for leave', 'agreed with facility');",
+    verify=lambda: admin_sql(f"SELECT pay_amount FROM public.shifts WHERE id='{S4}'") == "45000")
+check("ALLOW: applicants told shift changed",
+      n_notes(C1, 'shift_updated') == "1" and n_notes(C2, 'shift_updated') == "1" and n_notes(F, 'shift_updated') == "1")
+expect_blocked("admin moves shift into the past", ADMIN,
+    f"SELECT public.admin_update_shift('{S4}', current_date - 1, 'Weekend', 45000);",
+    verify=lambda: admin_sql(f"SELECT shift_date < current_date FROM public.shifts WHERE id='{S4}'") == "t")
+A4a = admin_sql(f"SELECT id FROM public.applications WHERE shift_id='{S4}' AND co_id='{C1}'")
+expect_ok("admin selects a CO", ADMIN, f"SELECT public.admin_approve_application('{A4a}');",
+    verify=lambda: admin_sql(f"SELECT status||'/'||assigned_co_id FROM public.shifts WHERE id='{S4}'") == f"filled/{C1}")
+check("ALLOW: other applicant set to rejected on selection",
+      admin_sql(f"SELECT status FROM public.applications WHERE id='{A4b}'") == "rejected")
+check("ALLOW: facility told AfyaWork selected a CO", n_notes(F, 'co_selected_by_admin') == "1")
+expect_blocked("admin selects second CO on a filled shift", ADMIN, f"SELECT public.admin_approve_application('{A4b}');")
+expect_blocked("facility calls admin_unassign_co", F, f"SELECT public.admin_unassign_co('{S4}', 'x');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.shifts WHERE id='{S4}'") == "open")
+expect_ok("admin removes selected CO", ADMIN, f"SELECT public.admin_unassign_co('{S4}', 'did not answer');",
+    verify=lambda: admin_sql(f"SELECT status||'/'||coalesce(assigned_co_id::text,'none') FROM public.shifts WHERE id='{S4}'") == "open/none")
+check("ALLOW: removed CO rejected, others pending again",
+      admin_sql(f"SELECT string_agg(status, ',' ORDER BY co_id='{C1}' DESC) FROM public.applications WHERE shift_id='{S4}'") == "rejected,pending")
+check("ALLOW: removed CO + facility notified", n_notes(C1, 'removed_from_shift') == "1" and n_notes(F, 'co_unassigned') == "1")
+expect_ok("admin selects another CO", ADMIN, f"SELECT public.admin_approve_application('{A4b}');",
+    verify=lambda: admin_sql(f"SELECT assigned_co_id FROM public.shifts WHERE id='{S4}'") == C2)
+expect_blocked("admin cancels without a reason", ADMIN, f"SELECT public.admin_cancel_shift('{S4}', '  ');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.shifts WHERE id='{S4}'") == "cancelled")
+before = n_notes(C2, 'shift_cancelled')
+expect_ok("admin cancels shift", ADMIN, f"SELECT public.admin_cancel_shift('{S4}', 'Facility closed for inspection');",
+    verify=lambda: admin_sql(f"SELECT status||'/'||cancelled_by FROM public.shifts WHERE id='{S4}'") == "cancelled/admin")
+check("ALLOW: CO + facility told AfyaWork cancelled",
+      int(n_notes(C2, 'shift_cancelled')) == int(before) + 1
+      and admin_sql(f"SELECT count(*) FROM public.notifications WHERE user_id='{F}' AND type='shift_cancelled' AND body LIKE '%AfyaWork%inspection%'") == "1")
+expect_blocked("admin edits a cancelled shift", ADMIN,
+    f"SELECT public.admin_update_shift('{S4}', current_date + 5, 'Weekend', 45000);",
+    verify=lambda: admin_sql(f"SELECT shift_date = current_date + 5 FROM public.shifts WHERE id='{S4}'") == "t")
+expect_blocked("admin cancels a completed shift", ADMIN, f"SELECT public.admin_cancel_shift('{S1}', 'oops');",
+    verify=lambda: admin_sql(f"SELECT status FROM public.shifts WHERE id='{S1}'") == "cancelled")
+check("ALLOW: every admin action logged",
+      admin_sql(f"SELECT string_agg(action, ',' ORDER BY created_at, action) FROM public.admin_shift_actions WHERE shift_id='{S4}'").count(',') >= 8)
+ok, out, _ = as_user(C1, "SELECT count(*) FROM public.admin_shift_actions;")
+check("BLOCK: CO reads admin action log", out.strip() == "0", out)
+expect_blocked("facility writes admin action log", F,
+    f"INSERT INTO public.admin_shift_actions (shift_id, action) VALUES ('{S4}', 'cancel');")
+
 # ── Report ───────────────────────────────────────────────────────────────────
 passed = sum(1 for _, ok, _ in results if ok)
 for name, ok, detail in results:
