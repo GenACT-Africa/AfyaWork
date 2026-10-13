@@ -8,6 +8,11 @@ import { Input, Select } from '../components/common/Input';
 import { LanguageToggle } from '../components/common/LanguageToggle';
 import { recordTosAgreement } from '../lib/api';
 
+/** Tanzanian mobile: 07xx / 06xx xxx xxx, or with +255 / 255. Spaces and dashes allowed. */
+function isTzPhone(raw) {
+  return /^(?:\+?255|0)[67]\d{8}$/.test(String(raw || '').replace(/[\s-]/g, ''));
+}
+
 export function RegisterPage() {
   const [params] = useSearchParams();
   const defaultRole = params.get('role') || 'co';
@@ -31,7 +36,7 @@ export function RegisterPage() {
   const [form, setForm] = useState({
     email: '', password: '', display_name: '', phone: '',
     license_number: '', specialization: '',
-    facility_name: '', facility_type: '', address: '',
+    facility_name: '', facility_type: '', address: '', hfr_code: '',
   });
 
   function set(field) {
@@ -44,6 +49,8 @@ export function RegisterPage() {
     if (form.password.length < 6) { setError(t('auth.err_password')); return; }
     if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
     if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
+    if (role === 'facility' && !isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
+    if (role === 'co' && form.phone.trim() && !isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
 
     if (!tosAgreed) { setError('You must agree to the Terms of Service and Privacy Policy to continue.'); return; }
 
@@ -53,9 +60,10 @@ export function RegisterPage() {
       password: form.password,
       role,
       display_name: role === 'facility' ? form.facility_name : form.display_name,
+      phone: form.phone.trim() || undefined,
       ...(role === 'co'
         ? { license_number: form.license_number, specialization: form.specialization }
-        : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address }),
+        : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address, hfr_code: form.hfr_code.trim() }),
     };
     const { data, error: err } = await signUp(payload);
     if (err) { setLoading(false); setError(err.message); return; }
@@ -143,7 +151,7 @@ export function RegisterPage() {
             <Input label={t('auth.facility_name')} value={form.facility_name} onChange={set('facility_name')} placeholder="Aga Khan Health Centre" required />
             <Input label={t('auth.contact_email')} type="email" value={form.email} onChange={set('email')} placeholder="admin@facility.co.tz" required />
             <Input label={t('auth.password')} type="password" value={form.password} onChange={set('password')} placeholder={t('auth.password_placeholder')} required />
-            <Input label={t('auth.contact_phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+            <Input label={t('auth.contact_phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required />
             <Select label={t('auth.facility_type')} value={form.facility_type} onChange={set('facility_type')}>
               <option value="">{t('auth.select_type')}</option>
               <option value="Private Clinic">{t('auth.private_clinic')}</option>
@@ -152,6 +160,10 @@ export function RegisterPage() {
               <option value="Diagnostic Centre">{t('auth.diagnostic')}</option>
             </Select>
             <Input label={t('auth.address')} value={form.address} onChange={set('address')} placeholder={t('auth.address_placeholder')} />
+            <div>
+              <Input label={t('auth.hfr_code')} value={form.hfr_code} onChange={set('hfr_code')} placeholder="125039-8" />
+              <p className="text-xs text-gray-400 mt-1">{t('auth.hfr_code_hint')}</p>
+            </div>
           </>
         )}
 

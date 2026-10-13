@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, BadgeCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getFacilityProfile, updateFacilityProfile, updateUserProfile, uploadAvatar } from '../../lib/api';
+import { getFacilityProfile, updateFacilityProfile, updateUserProfile, uploadAvatar, checkMyFacilityHfr, friendlyHfrError } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
+
+const HFR_NOTES = {
+  operating:     ['text-green-700', 'Found on the Health Facility Registry'],
+  not_operating: ['text-red-700',   'The Health Facility Registry does not show this facility as operating. Contact AfyaWork.'],
+  not_found:     ['text-red-700',   'We could not find this code on the Health Facility Registry. Check it on your registration certificate.'],
+  error:         ['text-gray-500',  'We could not reach the Health Facility Registry. AfyaWork will check again.'],
+};
+
+function HfrNote({ profile }) {
+  const n = profile?.hfr_code && HFR_NOTES[profile.hfr_status];
+  if (!n) {
+    return <p className="text-xs text-gray-400 mt-1">On your Ministry of Health registration certificate, e.g. 125039-8. AfyaWork checks it on the Health Facility Registry.</p>;
+  }
+  const [cls, text] = n;
+  const extra = profile.verified ? '' : profile.hfr_status === 'operating' ? ' · AfyaWork will call your official number to confirm' : '';
+  return <p className={`text-xs mt-1 ${cls}`}>{text}{profile.hfr_name && profile.hfr_status === 'operating' ? ` as ${profile.hfr_name}` : ''}{extra}</p>;
+}
 
 const PLANS = [
   { key: 'payg', label: 'Pay-as-you-go', price: 'TZS 0/mo', fee: '18.6% of CO pay' },
@@ -24,7 +41,7 @@ export default function FacilityProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '', bio: '' });
+  const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '', bio: '', hfr_code: '' });
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +55,7 @@ export default function FacilityProfile() {
         facility_type: data?.facility_type || '',
         address: data?.address || '',
         bio: data?.users?.bio || '',
+        hfr_code: data?.hfr_code || '',
       });
     }).finally(() => setLoading(false));
   }, [user?.id]);
@@ -62,14 +80,27 @@ export default function FacilityProfile() {
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
-    await Promise.all([
+    const codeChanged = (form.hfr_code.trim() || null) !== (profile?.hfr_code || null);
+    const [, { error }] = await Promise.all([
       updateUserProfile(user.id, { phone: form.phone, bio: form.bio }),
       updateFacilityProfile(user.id, {
         facility_name: form.facility_name,
         facility_type: form.facility_type,
         address: form.address,
+        hfr_code: form.hfr_code.trim() || null,
       }),
     ]);
+    if (error) {
+      setSaving(false);
+      show(friendlyHfrError(error).message, 'error');
+      return;
+    }
+    if (codeChanged && form.hfr_code.trim()) await checkMyFacilityHfr('self');
+    const { data } = await getFacilityProfile(user.id);
+    if (data) {
+      setProfile(data);
+      setForm((f) => ({ ...f, hfr_code: data.hfr_code || '' }));
+    }
     setSaving(false);
     show('Profile updated successfully!');
   }
@@ -109,7 +140,10 @@ export default function FacilityProfile() {
                 />
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900">{form.facility_name || 'Your facility'}</p>
+                <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                  {form.facility_name || 'Your facility'}
+                  {profile?.verified && <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><BadgeCheck className="w-4 h-4" /> Verified</span>}
+                </p>
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
@@ -125,7 +159,7 @@ export default function FacilityProfile() {
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Facility Name" value={form.facility_name} onChange={set('facility_name')} required />
               <Input label="Contact Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />
-              <Input label="Contact Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+              <Input label="Contact Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required pattern="\s*(\+?255|0)[\s\-]*[67]([\s\-]*\d){8}\s*" title="A Tanzanian mobile number, e.g. 0712 345 678" />
               <Select label="Facility Type" value={form.facility_type} onChange={set('facility_type')}>
                 <option value="">Select type</option>
                 <option value="Private Clinic">Private Clinic</option>
@@ -134,6 +168,10 @@ export default function FacilityProfile() {
                 <option value="Diagnostic Centre">Diagnostic Centre</option>
               </Select>
               <Input label="Address" value={form.address} onChange={set('address')} placeholder="Kinondoni, Dar es Salaam" />
+              <div>
+                <Input label="HFR facility code" value={form.hfr_code} onChange={set('hfr_code')} placeholder="125039-8" className="font-mono" />
+                <HfrNote profile={profile} />
+              </div>
 
               {/* About / Bio */}
               <div>

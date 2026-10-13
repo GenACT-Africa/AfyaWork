@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, MapPin, CreditCard, Calendar, Info, Star, CalendarDays, Pencil, Send, Trash2, CheckCircle2 } from 'lucide-react';
+import { Building2, MapPin, CreditCard, Calendar, Info, Star, CalendarDays, Pencil, Send, Trash2, CheckCircle2, BadgeCheck } from 'lucide-react';
 import { getAdminFacilityDetail } from '../../lib/api';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -8,6 +8,7 @@ import {
   AccountStatusBadge, RatingsList, ChecklistCard, CompletenessBar,
 } from './ProfileKit';
 import { facilityCompleteness, formatDate, formatTZS } from './profileUtils';
+import { HfrVerificationPanel, HfrStatusBadge } from './HfrVerification';
 
 // Mirrors the plans on the facility's own Profile page
 const PLANS = [
@@ -17,10 +18,11 @@ const PLANS = [
   { key: 'enterprise', label: 'Enterprise',    price: 'TZS 100,000/mo', fee: 'TZS 4,000 flat per shift' },
 ];
 
-export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelete, resending }) {
+export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelete, resending, onVerificationChange }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('profile');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -29,7 +31,12 @@ export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelet
       if (error) setError(error.message); else setData(data);
     });
     return () => { alive = false; };
-  }, [userId]);
+  }, [userId, reloadKey]);
+
+  function verificationChanged() {
+    setReloadKey((k) => k + 1);
+    onVerificationChange?.();
+  }
 
   const f = data?.profile;
   const u = f?.users || {};
@@ -77,7 +84,10 @@ export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelet
                 <div className="pb-1 hidden sm:block"><ContactButtons email={u.email} phone={u.phone} /></div>
               </div>
               <div className="mt-3 min-w-0">
-                <h2 className="text-2xl font-bold text-gray-900">{f.facility_name}</h2>
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  {f.facility_name}
+                  {f.verified && <BadgeCheck className="w-6 h-6 text-green-600" aria-label="Verified facility" />}
+                </h2>
                 <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <Building2 className="w-4 h-4 text-gray-400" /> {f.facility_type || 'Type not set'}
                   {f.address && <><span className="text-gray-300">·</span><MapPin className="w-4 h-4 text-gray-400" /> {f.address}</>}
@@ -86,6 +96,7 @@ export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelet
               <div className="sm:hidden mt-3"><ContactButtons email={u.email} phone={u.phone} /></div>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <AccountStatusBadge status={status} />
+                <HfrStatusBadge facility={f} />
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 ring-1 ring-sky-200">
                   {PLANS.find((p) => p.key === plan)?.label || plan}
                 </span>
@@ -109,6 +120,8 @@ export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelet
             {tab === 'profile' && (
               <div className="grid lg:grid-cols-3 gap-5">
                 <div className="lg:col-span-2 space-y-5">
+                  <HfrVerificationPanel key={f.hfr_code || 'none'} profile={f} onChanged={verificationChanged} />
+
                   <Section icon={Building2} title="Facility Information">
                     <div className="grid sm:grid-cols-2 gap-4">
                       <Field label="Facility Name" value={f.facility_name} />

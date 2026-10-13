@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, Download } from 'lucide-react';
+import { Building2, MapPin, Phone, Mail, Search, Plus, Pencil, Trash2, X, Send, Eye, LayoutGrid, List, Download, ShieldCheck, BadgeCheck } from 'lucide-react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Input, Select } from '../../components/common/Input';
 import { Avatar } from '../../components/common/Avatar';
 import { FacilityProfileView } from '../../components/admin/FacilityProfileView';
+import { HfrStatusBadge } from '../../components/admin/HfrVerification';
+import { HFR_STATUS, hfrStatusOf } from '../../components/admin/hfrStatus';
 import {
   AccountStatusBadge, CompletenessBar, RatingPill,
 } from '../../components/admin/ProfileKit';
@@ -16,6 +18,7 @@ import {
   adminUpdateFacility,
   adminDeleteUser,
   adminResendInvite,
+  adminCheckFacilityHfr,
 } from '../../lib/api';
 import { downloadXlsx, exportFilename, toDate } from '../../lib/exportXlsx';
 
@@ -30,7 +33,14 @@ const FILTERS = [
   { key: 'posting',    label: 'Posting shifts' },
   { key: 'no_shifts',  label: 'No shifts yet' },
   { key: 'incomplete', label: 'Incomplete profile' },
+  { key: 'to_review',   label: 'On HFR — confirm facility' },
+  { key: 'hfr_problem', label: 'HFR problem' },
+  { key: 'unchecked',   label: 'HFR not checked' },
+  { key: 'verified',    label: 'Verified' },
 ];
+
+const HFR_PROBLEM = ['not_operating', 'not_found'];
+const isUnchecked = (f) => ['unchecked', 'no_code', 'error'].includes(hfrStatusOf(f));
 
 const ACCOUNT_LABELS = { active: 'Active', pending_invite: 'Invite pending', expired: 'Invite expired' };
 
@@ -43,6 +53,11 @@ const EXPORT_COLUMNS = [
   { header: 'Phone',                value: (f) => f.users?.phone, width: 18 },
   { header: 'Account status',       value: (f) => ACCOUNT_LABELS[f.users?.account_status || 'active'] || f.users?.account_status },
   { header: 'Plan',                 value: (f) => PLAN_LABELS[f.subscription_plan] || f.subscription_plan },
+  { header: 'Verified',             value: (f) => !!f.verified },
+  { header: 'HFR code',             value: (f) => f.hfr_code, width: 14 },
+  { header: 'HFR status',           value: (f) => HFR_STATUS[hfrStatusOf(f)]?.label, width: 20 },
+  { header: 'Name on HFR',          value: (f) => f.hfr_name, width: 28 },
+  { header: 'HFR last checked',     value: (f) => toDate(f.hfr_checked_at) },
   { header: 'Shifts posted',        value: (f) => f.shift_stats?.total || 0, width: 14 },
   { header: 'Open shifts',          value: (f) => f.shift_stats?.open || 0, width: 12 },
   { header: 'Completed shifts',     value: (f) => f.shift_stats?.completed || 0 },
@@ -123,6 +138,7 @@ export default function AdminFacilities() {
 
   const [resendingId, setResendingId] = useState(null);
   const [toast, setToast] = useState('');
+  const [checkingAll, setCheckingAll] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -141,12 +157,16 @@ export default function AdminFacilities() {
   function changeView(v) { setView(v); saveView(v); }
 
   const counts = useMemo(() => {
-    const c = { all: facilities.length, active: 0, pending: 0, posting: 0, no_shifts: 0, incomplete: 0 };
+    const c = { all: facilities.length, active: 0, pending: 0, posting: 0, no_shifts: 0, incomplete: 0, to_review: 0, hfr_problem: 0, unchecked: 0, verified: 0 };
     facilities.forEach((f) => {
       const st = f.users?.account_status || 'active';
       if (st === 'active') c.active++; else c.pending++;
       if (f.shift_stats?.total) c.posting++; else c.no_shifts++;
       if (f._completeness.pct < 100) c.incomplete++;
+      if (f.hfr_status === 'operating' && !f.verified) c.to_review++;
+      if (HFR_PROBLEM.includes(f.hfr_status)) c.hfr_problem++;
+      if (isUnchecked(f)) c.unchecked++;
+      if (f.verified) c.verified++;
     });
     return c;
   }, [facilities]);
@@ -161,11 +181,17 @@ export default function AdminFacilities() {
         if (filter === 'posting' && !f.shift_stats?.total) return false;
         if (filter === 'no_shifts' && f.shift_stats?.total) return false;
         if (filter === 'incomplete' && f._completeness.pct >= 100) return false;
+        if (filter === 'to_review' && !(f.hfr_status === 'operating' && !f.verified)) return false;
+        if (filter === 'hfr_problem' && !HFR_PROBLEM.includes(f.hfr_status)) return false;
+        if (filter === 'unchecked' && !isUnchecked(f)) return false;
+        if (filter === 'verified' && !f.verified) return false;
         if (!q) return true;
         return (
           f.facility_name?.toLowerCase().includes(q) ||
           f.facility_type?.toLowerCase().includes(q) ||
           f.address?.toLowerCase().includes(q) ||
+          f.hfr_code?.toLowerCase().includes(q) ||
+          f.hfr_name?.toLowerCase().includes(q) ||
           f.users?.email?.toLowerCase().includes(q) ||
           f.users?.phone?.toLowerCase().includes(q)
         );
@@ -259,6 +285,24 @@ export default function AdminFacilities() {
     );
   }
 
+  async function handleCheckAll() {
+    const targets = facilities.filter((f) => f.hfr_code);
+    if (!targets.length) { showToast('No facility has an HFR code yet.'); return; }
+    setCheckingAll(true);
+    const summary = {};
+    let failed = 0;
+    for (let i = 0; i < targets.length; i++) {
+      setToast(`Checking Health Facility Registry… ${i + 1} of ${targets.length}`);
+      const { data, error } = await adminCheckFacilityHfr(targets[i].user_id);
+      if (error) failed++; else summary[data.status] = (summary[data.status] || 0) + 1;
+    }
+    setCheckingAll(false);
+    const parts = Object.entries(summary).map(([k, n]) => `${n} ${(HFR_STATUS[k]?.label || k).toLowerCase()}`);
+    const missing = facilities.length - targets.length;
+    showToast(`Checked ${targets.length}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}${missing ? ` · ${missing} without a code` : ''}`);
+    load();
+  }
+
   function handleExport() {
     const isAll = filter === 'all' && !search.trim();
     downloadXlsx(exportFilename('facilities'), 'Facilities', EXPORT_COLUMNS, filtered);
@@ -273,6 +317,9 @@ export default function AdminFacilities() {
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={handleExport} disabled={loading || filtered.length === 0} title="Download the list below (current search, filter and sort) as an Excel spreadsheet">
             <Download className="w-4 h-4" /> Export
+          </Button>
+          <Button size="sm" variant="secondary" loading={checkingAll} onClick={handleCheckAll} title="Look up every facility with an HFR code on the Health Facility Registry">
+            <ShieldCheck className="w-4 h-4" /> Check all on HFR
           </Button>
           <Button size="sm" onClick={openAdd}>
             <Plus className="w-4 h-4" /> Add Facility
@@ -362,7 +409,10 @@ export default function AdminFacilities() {
                 <div className="flex items-start gap-4">
                   <Avatar src={f.users?.avatar_url} name={f.facility_name} size="xl" shape="rounded" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-900 truncate">{f.facility_name}</p>
+                    <p className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
+                      <span className="truncate">{f.facility_name}</span>
+                      {f.verified && <BadgeCheck className="w-4 h-4 text-green-600 shrink-0" aria-label="Verified" />}
+                    </p>
                     <p className="text-xs text-gray-500 mt-0.5">{f.facility_type || 'Type not set'}</p>
                     {f.address && (
                       <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5 truncate">
@@ -371,6 +421,7 @@ export default function AdminFacilities() {
                     )}
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <AccountStatusBadge status={f.users?.account_status || 'active'} />
+                      <HfrStatusBadge facility={f} />
                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-sky-50 text-sky-700 ring-1 ring-sky-200">
                         {PLAN_LABELS[f.subscription_plan] || 'Pay-as-you-go'}
                       </span>
@@ -419,8 +470,11 @@ export default function AdminFacilities() {
                     <div className="flex items-center gap-3">
                       <Avatar src={f.users?.avatar_url} name={f.facility_name} size="lg" shape="rounded" />
                       <div className="min-w-0">
-                        <p className="font-semibold text-gray-900">{f.facility_name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}</p>
+                        <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                          {f.facility_name}
+                          {f.verified && <BadgeCheck className="w-4 h-4 text-green-600 shrink-0" aria-label="Verified" />}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">{f.facility_type || '—'}{f.hfr_code ? ` · HFR ${f.hfr_code}` : ''}</p>
                         {f.address && (
                           <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                             <MapPin className="w-3 h-3" />{f.address}
@@ -443,6 +497,7 @@ export default function AdminFacilities() {
                   </td>
                   <td className="px-5 py-4">
                     <AccountStatusBadge status={f.users?.account_status || 'active'} />
+                    <HfrStatusBadge facility={f} className="mt-1.5" />
                     <p className="text-xs text-gray-400 mt-1.5 whitespace-nowrap">Joined {formatDate(f.users?.created_at)}</p>
                   </td>
                   <td className="px-5 py-4 min-w-[120px]">
@@ -474,6 +529,7 @@ export default function AdminFacilities() {
           onResend={handleResend}
           onDelete={setDeleteTarget}
           resending={resendingId === viewing}
+          onVerificationChange={load}
         />
       )}
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Users, XCircle, Plus, ChevronRight } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Users, XCircle, Plus, ChevronRight, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
-import { getFacilityDashboardStats, getFacilityShifts } from '../../lib/api';
+import { getFacilityDashboardStats, getFacilityShifts, getFacilityProfile, checkMyFacilityHfr } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { StatCard } from '../../components/common/Card';
 import { StatCardSkeleton, ShiftCardSkeleton } from '../../components/common/Skeleton';
@@ -13,6 +13,31 @@ import {
   ActiveShiftsBanner, ACTIVE_SHIFT_SET, normalizeFacilityShift,
 } from '../../components/shifts/ShiftProgressCard';
 
+function HfrBanner({ profile, t }) {
+  const problem = profile.hfr_code && ['not_found', 'not_operating'].includes(profile.hfr_status);
+  const pending = profile.hfr_code && profile.hfr_status === 'operating';
+  if (pending) {
+    return (
+      <div className="mb-6 rounded-2xl border border-teal-200 bg-teal-50 px-5 py-4 flex items-start gap-3 text-sm text-teal-800">
+        <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" /><p>{t('facility.hfr_pending')}</p>
+      </div>
+    );
+  }
+  if (profile.hfr_code && !problem) return null;   // checking / check failed: nothing to do yet
+  return (
+    <div className={`mb-6 rounded-2xl border px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 text-sm ${problem ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+      <div className="flex items-start gap-3 flex-1">
+        <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+        <div>
+          {!problem && <p className="font-semibold">{t('facility.hfr_banner_title')}</p>}
+          <p>{problem ? t('facility.hfr_problem') : t('facility.hfr_banner_body')}</p>
+        </div>
+      </div>
+      <Button to="/facility/profile" size="sm" variant="secondary">{t('facility.hfr_banner_cta')}</Button>
+    </div>
+  );
+}
+
 export default function FacilityDashboard() {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -20,13 +45,21 @@ export default function FacilityDashboard() {
   const [allShifts, setAllShifts]   = useState([]);
   const [recentShifts, setRecentShifts] = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [profile, setProfile]       = useState(null);
 
   useEffect(() => {
     if (!user?.id) return;
     Promise.all([
       getFacilityDashboardStats(user.id),
       getFacilityShifts(user.id),
-    ]).then(([statsRes, shiftsRes]) => {
+      getFacilityProfile(user.id),
+    ]).then(([statsRes, shiftsRes, profileRes]) => {
+      const p = profileRes.data;
+      setProfile(p);
+      // HFR code given at signup but never checked: look it up now (server rate-limits this)
+      if (p?.hfr_code && (!p.hfr_status || p.hfr_status === 'unchecked')) {
+        checkMyFacilityHfr('signup').then(() => getFacilityProfile(user.id)).then(({ data }) => data && setProfile(data));
+      }
       setStats(statsRes);
       const shifts = shiftsRes.data || [];
       setAllShifts(shifts);
@@ -44,6 +77,11 @@ export default function FacilityDashboard() {
       subtitle={t('facility.overview')}
       action={<Button to="/facility/post-shift"><Plus className="w-4 h-4" />{t('facility.post_shift')}</Button>}
     >
+      {/* ── Facility verification (HFR) ── */}
+      {profile && !profile.verified && (
+        <HfrBanner profile={profile} t={t} />
+      )}
+
       {/* ── Active shifts live tracker ── */}
       <ActiveShiftsBanner
         shifts={activeShifts}

@@ -246,6 +246,58 @@ expect_ok("facility disputes checkout", F, f"SELECT public.dispute_checkout('{S3
 expect_ok("admin resolves dispute (approve)", ADMIN, f"SELECT public.resolve_dispute('{S3}','approve');",
     verify=lambda: admin_sql(f"SELECT count(*) FROM public.shift_payments WHERE shift_id='{S3}'") == "1")
 
+# ── 11. Facility HFR verification ─────────────────────────────────────────────
+F3, _ = signup("fac3@test.tz", {"role": "facility", "display_name": "Morcep", "facility_name": "Morcep Dispensary", "hfr_code": " 1250398 ", "phone": " 0754 051 704 "})
+check("ALLOW: signup stores the phone number",
+      admin_sql(f"SELECT phone FROM public.users WHERE id='{F3}'") == "0754 051 704")
+check("ALLOW: signup stores normalised HFR code",
+      admin_sql(f"SELECT hfr_code||'/'||hfr_status||'/'||verified FROM public.facility_profiles WHERE user_id='{F3}'") == "125039-8/unchecked/false")
+F4, err4 = signup("fac4@test.tz", {"role": "facility", "display_name": "Copycat", "facility_name": "Copycat", "hfr_code": "125039-8"})
+check("ALLOW: signup with a taken HFR code still succeeds, code dropped",
+      F4 and admin_sql(f"SELECT coalesce(hfr_code,'none') FROM public.facility_profiles WHERE user_id='{F4}'") == "none", err4[:120])
+expect_blocked("facility marks self verified", F3,
+    f"UPDATE public.facility_profiles SET verified=true WHERE user_id='{F3}';",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
+expect_blocked("facility sets own hfr_status", F3,
+    f"UPDATE public.facility_profiles SET hfr_status='operating' WHERE user_id='{F3}';",
+    verify=lambda: admin_sql(f"SELECT hfr_status FROM public.facility_profiles WHERE user_id='{F3}'") == "operating")
+expect_blocked("facility calls admin_set_facility_verification", F3,
+    f"SELECT public.admin_set_facility_verification('{F3}', true, 'me');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
+expect_blocked("admin approves before HFR shows operating", ADMIN,
+    f"SELECT public.admin_set_facility_verification('{F3}', true, 'too early');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
+expect_ok("edge function (service role) records HFR result", None,
+    f"UPDATE public.facility_profiles SET hfr_status='operating', hfr_name='MORCEP', hfr_checked_at=now() WHERE user_id='{F3}';",
+    role="service_role",
+    verify=lambda: admin_sql(f"SELECT hfr_status FROM public.facility_profiles WHERE user_id='{F3}'") == "operating")
+expect_blocked("facility writes its own HFR check row", F3,
+    f"INSERT INTO public.facility_hfr_checks (facility_id, trigger_source, status) VALUES ('{F3}','self','operating');")
+admin_sql(f"INSERT INTO public.facility_hfr_checks (facility_id, trigger_source, status, hfr_phone) VALUES ('{F3}','admin','operating','0754051704');")
+ok, out, _ = as_user(F3, "SELECT count(*) FROM public.facility_hfr_checks;")
+check("BLOCK: facility reads HFR check history (official phone etc.)", out.strip() == "0", out)
+expect_ok("admin approves operating facility", ADMIN,
+    f"SELECT public.admin_set_facility_verification('{F3}', true, 'Called HFR number');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
+ok, out, _ = as_user(C1, f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}';")
+check("ALLOW: CO sees facility Verified flag", out.strip() == "t", out)
+expect_ok("verified facility edits address, stays verified", F3,
+    f"UPDATE public.facility_profiles SET address='Kijichi' WHERE user_id='{F3}';",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
+admin_sql("UPDATE public.system_config SET value='true' WHERE key='require_verified_facilities';")
+expect_blocked("unverified facility posts shift (enforced)", F2,
+    f"INSERT INTO public.shifts (facility_id, shift_date, shift_type, pay_amount) VALUES ('{F2}', current_date + 2, 'Day (8AM-4PM)', 35000);")
+expect_ok("verified facility posts shift (enforced)", F3,
+    f"INSERT INTO public.shifts (facility_id, shift_date, shift_type, pay_amount) VALUES ('{F3}', current_date + 2, 'Day (8AM-4PM)', 35000);")
+admin_sql("UPDATE public.system_config SET value='false' WHERE key='require_verified_facilities';")
+admin_sql(f"UPDATE public.facility_profiles SET hfr_code='111111-1' WHERE user_id='{F}';")
+expect_blocked("facility claims another account's HFR code", F3,
+    f"UPDATE public.facility_profiles SET hfr_code='111111-1' WHERE user_id='{F3}';",
+    verify=lambda: admin_sql(f"SELECT hfr_code FROM public.facility_profiles WHERE user_id='{F3}'") == "111111-1")
+expect_ok("facility changes HFR code → verification reset", F3,
+    f"UPDATE public.facility_profiles SET hfr_code='2222229' WHERE user_id='{F3}';",
+    verify=lambda: admin_sql(f"SELECT hfr_code||'/'||hfr_status||'/'||verified FROM public.facility_profiles WHERE user_id='{F3}'") == "222222-9/unchecked/false")
+
 # ── Report ───────────────────────────────────────────────────────────────────
 passed = sum(1 for _, ok, _ in results if ok)
 for name, ok, detail in results:

@@ -30,7 +30,7 @@ async function attachFacilityProfiles(shifts) {
   const ids = [...new Set(shifts.map((s) => s.facility_id))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name, facility_type, address, users(avatar_url, bio)')
+    .select('user_id, facility_name, facility_type, address, verified, users(avatar_url, bio)')
     .in('user_id', ids);
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
   return shifts.map((s) => ({ ...s, facility_profiles: byId[s.facility_id] || null }));
@@ -422,7 +422,7 @@ export async function getUserRatings(userId) {
 export async function getCOProfile(userId) {
   return supabase
     .from('co_profiles')
-    .select('*, users(display_name, email, phone, avatar_url, bio)')
+    .select('*, users!user_id(display_name, email, phone, avatar_url, bio)')
     .eq('user_id', userId)
     .single();
 }
@@ -596,7 +596,7 @@ export async function getAdminFacilities() {
 export async function getAdminWorkers() {
   const { data, error } = await supabase
     .from('co_profiles')
-    .select(`*, users(${ADMIN_USER_COLS})`)
+    .select(`*, users!user_id(${ADMIN_USER_COLS})`)
     .order('user_id', { ascending: true });
   if (error || !data) return { data: [], error };
 
@@ -635,7 +635,7 @@ export async function getAdminWorkerDetail(userId) {
     { data: ratings },
     { data: apps },
   ] = await Promise.all([
-    supabase.from('co_profiles').select(`*, users(${ADMIN_USER_COLS})`).eq('user_id', userId).single(),
+    supabase.from('co_profiles').select(`*, users!user_id(${ADMIN_USER_COLS})`).eq('user_id', userId).single(),
     supabase.from('co_mobile_money').select('*').eq('co_id', userId).maybeSingle(),
     supabase.from('shift_ratings').select(RATING_COLS).eq('ratee_id', userId).order('published_at', { ascending: false }),
     supabase
@@ -852,7 +852,7 @@ export async function searchCOsByAvailability(filters = {}) {
       employment_availability_status, available_from_immediately, available_from_date,
       preferred_location, preferred_location_text, current_employment_status,
       availability_note, availability_last_updated_at,
-      users(display_name, avatar_url, bio)
+      users!user_id(display_name, avatar_url, bio)
     `)
     .in('employment_availability_status', ['open_fulltime', 'open_parttime']);
 
@@ -1342,4 +1342,45 @@ export async function adminSetCOVerification(coId, verified, note = null) {
 export async function checkMyLicence(source = 'self') {
   const { data, error } = await supabase.functions.invoke('verify-co', { body: { self: true, source } });
   return { data, error };
+}
+
+// ─── HFR facility verification (verify-facility edge function) ─────────────
+
+/** Admin: look up one facility on the Health Facility Registry now. */
+export async function adminCheckFacilityHfr(facilityId) {
+  const { data, error } = await supabase.functions.invoke('verify-facility', { body: { facility_id: facilityId } });
+  return { data, error: error || (data?.error ? new Error(data.error) : null) };
+}
+
+/** Admin: lookup history for one facility, newest first. */
+export async function getFacilityHfrChecks(facilityId, limit = 5) {
+  return supabase.from('facility_hfr_checks')
+    .select('id, checked_at, trigger_source, searched_code, status, hfr_code, hfr_name, hfr_type, hfr_region, hfr_council, hfr_address, hfr_ownership, hfr_owner_name, hfr_authority, hfr_operating, hfr_opened, hfr_phone, name_match, message')
+    .eq('facility_id', facilityId).order('checked_at', { ascending: false }).limit(limit);
+}
+
+/** Admin: confirm (or remove) a facility's verification after calling its official HFR phone. */
+export async function adminSetFacilityVerification(facilityId, verified, note = null) {
+  return supabase.rpc('admin_set_facility_verification', { p_facility_id: facilityId, p_verified: verified, p_note: note });
+}
+
+/** Admin: set or correct a facility's HFR code. */
+export async function adminSetFacilityHfrCode(facilityId, hfrCode) {
+  const { error } = await supabase.from('facility_profiles').update({ hfr_code: hfrCode?.trim() || null }).eq('user_id', facilityId);
+  return { error: friendlyHfrError(error) };
+}
+
+/** Facility: check my own HFR code (after signup, or after changing it). Rate-limited server-side. */
+export async function checkMyFacilityHfr(source = 'self') {
+  const { data, error } = await supabase.functions.invoke('verify-facility', { body: { self: true, source } });
+  return { data, error };
+}
+
+/** The HFR code is unique per account; turn the DB error into something readable. */
+export function friendlyHfrError(error) {
+  if (!error) return null;
+  if (/facility_profiles_hfr_code_key|duplicate key/i.test(error.message || '')) {
+    return new Error('Another AfyaWork account already uses this HFR code. Contact AfyaWork if this is your facility.');
+  }
+  return error;
 }

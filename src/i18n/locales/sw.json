@@ -66,7 +66,7 @@
     "emergency": "Dharura / Majeraha",
     "facility_name": "Jina la kituo",
     "contact_email": "Barua pepe ya mawasiliano",
-    "contact_phone": "Simu ya mawasiliano (si lazima)",
+    "contact_phone": "Simu ya mawasiliano",
     "facility_type": "Aina ya kituo",
     "select_type": "Chagua aina",
     "private_clinic": "Kliniki ya Kibinafsi",
@@ -78,7 +78,10 @@
     "create_btn": "Fungua akaunti",
     "err_password": "Nenosiri lazima liwe na angalau herufi 6.",
     "err_license": "Namba ya leseni inahitajika.",
-    "err_facility_name": "Jina la kituo linahitajika."
+    "err_facility_name": "Jina la kituo linahitajika.",
+    "hfr_code": "Namba ya kituo HFR (si lazima)",
+    "hfr_code_hint": "Iko kwenye cheti cha usajili cha Wizara ya Afya, mfano 125039-8. Tunaitumia kuthibitisha kituo chako.",
+    "err_phone": "Weka namba sahihi ya simu, mfano 0712 345 678."
   },
   "facility": {
     "welcome": "Karibu tena, {{name}}",
@@ -139,7 +142,12 @@
     "err_pay": "Malipo ya CO yanahitajika.",
     "err_pay_min": "Malipo ya chini ni TZS 10,000.",
     "err_pay_max": "Malipo ya juu ni TZS 500,000.",
-    "err_desc": "Upeo ni herufi 500."
+    "err_desc": "Upeo ni herufi 500.",
+    "hfr_banner_title": "Thibitisha kituo chako",
+    "hfr_banner_body": "Weka namba ya kituo chako ya HFR ili AfyaWork ihakiki usajili wako na Wizara ya Afya. Clinical Officers wataona alama ya Kimethibitishwa kwenye zamu zako.",
+    "hfr_banner_cta": "Weka namba ya HFR",
+    "hfr_pending": "Kituo chako kipo kwenye Rejista ya Vituo vya Afya. AfyaWork itapiga simu namba yako rasmi kuthibitisha, kisha itakuwekea alama ya Kimethibitishwa.",
+    "hfr_problem": "Hatukuweza kuthibitisha kituo chako kwenye Rejista ya Vituo vya Afya. Hakiki namba ya HFR kwenye wasifu wako."
   },
   "co": {
     "welcome": "Karibu, {{name}}",

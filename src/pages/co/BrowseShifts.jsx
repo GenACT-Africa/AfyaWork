@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { MapPin, Clock, Building2, Search, Filter } from 'lucide-react';
+import { MapPin, Clock, Building2, Search, Filter, BadgeCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getOpenShifts, applyToShift, getMyCOApplications } from '../../lib/api';
@@ -131,7 +131,10 @@ function ShiftCard({ shift, applied, applying, onApply, t }) {
             shape="rounded"
           />
           <div>
-            <p className="font-semibold text-gray-800 leading-tight">{facility?.facility_name}</p>
+            <p className="font-semibold text-gray-800 leading-tight flex items-center gap-1">
+              {facility?.facility_name}
+              {facility?.verified && <BadgeCheck className="w-4 h-4 text-green-600 shrink-0" aria-label="Verified facility" title="Verified facility" />}
+            </p>
             {facility?.facility_type && (
               <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                 <Building2 className="w-3 h-3" />{facility.facility_type}

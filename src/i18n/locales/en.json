@@ -66,7 +66,7 @@
     "emergency": "Emergency / Trauma",
     "facility_name": "Facility name",
     "contact_email": "Contact email",
-    "contact_phone": "Contact phone (optional)",
+    "contact_phone": "Contact phone",
     "facility_type": "Facility type",
     "select_type": "Select type",
     "private_clinic": "Private Clinic",
@@ -78,7 +78,10 @@
     "create_btn": "Create account",
     "err_password": "Password must be at least 6 characters.",
     "err_license": "License number is required.",
-    "err_facility_name": "Facility name is required."
+    "err_facility_name": "Facility name is required.",
+    "hfr_code": "HFR facility code (optional)",
+    "hfr_code_hint": "On your Ministry of Health registration certificate, e.g. 125039-8. We use it to verify your facility.",
+    "err_phone": "Enter a valid phone number, e.g. 0712 345 678."
   },
   "facility": {
     "welcome": "Welcome back, {{name}}",
@@ -139,7 +142,12 @@
     "err_pay": "CO pay is required.",
     "err_pay_min": "Minimum CO pay is TZS 10,000.",
     "err_pay_max": "Maximum CO pay is TZS 500,000.",
-    "err_desc": "Maximum 500 characters."
+    "err_desc": "Maximum 500 characters.",
+    "hfr_banner_title": "Get your facility verified",
+    "hfr_banner_body": "Add your HFR facility code so AfyaWork can check your registration with the Ministry of Health. Clinical Officers see a Verified badge on your shifts.",
+    "hfr_banner_cta": "Add HFR code",
+    "hfr_pending": "Your facility is on the Health Facility Registry. AfyaWork will call your official number to confirm, then mark you as verified.",
+    "hfr_problem": "We could not confirm your facility on the Health Facility Registry. Check your HFR code on your profile."
   },
   "co": {
     "welcome": "Welcome, {{name}}",

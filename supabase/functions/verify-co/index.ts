@@ -187,7 +187,7 @@ async function lookup(licence: string | null): Promise<Result> {
 // ── check one CO and store ──────────────────────────────────────────────────
 async function checkCo(coId: string, source: string) {
   const { data: co, error } = await db.from('co_profiles')
-    .select('user_id, license_number, verified, users!inner(display_name)')
+    .select('user_id, license_number, verified, users!user_id!inner(display_name)')
     .eq('user_id', coId).single();
   if (error || !co) return { co_id: coId, status: 'error', message: 'CO not found' };
   const displayName = (co as any).users?.display_name ?? '';
