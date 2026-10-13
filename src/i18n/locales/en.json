@@ -55,7 +55,7 @@
     "co": "Clinical Officer",
     "facility": "Healthcare Facility",
     "full_name": "Full name",
-    "phone": "Phone (optional)",
+    "phone": "Phone",
     "license_number": "License number",
     "specialization": "Specialization",
     "select_spec": "Select specialization",

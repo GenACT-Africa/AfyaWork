@@ -49,8 +49,7 @@ export function RegisterPage() {
     if (form.password.length < 6) { setError(t('auth.err_password')); return; }
     if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
     if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
-    if (role === 'facility' && !isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
-    if (role === 'co' && form.phone.trim() && !isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
+    if (!isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
 
     if (!tosAgreed) { setError('You must agree to the Terms of Service and Privacy Policy to continue.'); return; }
 
@@ -135,7 +134,7 @@ export function RegisterPage() {
             <Input label={t('auth.full_name')} value={form.display_name} onChange={set('display_name')} placeholder="Dr. Amina Juma" required />
             <Input label={t('auth.email')} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
             <Input label={t('auth.password')} type="password" value={form.password} onChange={set('password')} placeholder={t('auth.password_placeholder')} required />
-            <Input label={t('auth.phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+            <Input label={t('auth.phone')} type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required />
             <Input label={t('auth.license_number')} value={form.license_number} onChange={set('license_number')} placeholder="CO-12345" required />
             <Select label={t('auth.specialization')} value={form.specialization} onChange={set('specialization')}>
               <option value="">{t('auth.select_spec')}</option>

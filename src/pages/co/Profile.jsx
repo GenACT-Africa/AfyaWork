@@ -369,7 +369,7 @@ export default function COProfile() {
             <form onSubmit={handleSave} className="space-y-4">
               <Input label="Full Name" value={form.display_name} onChange={set('display_name')} required />
               <Input label="Email" value={profile?.users?.email || user?.email} disabled className="bg-gray-50 text-gray-500" />
-              <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+              <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" required pattern="\s*(\+?255|0)[\s\-]*[67]([\s\-]*\d){8}\s*" title="A Tanzanian mobile number, e.g. 0712 345 678" />
               <div>
                 <Input label="License Number" value={profile?.license_number || ''} disabled className="bg-gray-50 text-gray-500" />
                 <MctLicenceNote profile={profile} />
