@@ -399,10 +399,11 @@ ok, out, _ = as_user(C1, f"SELECT location_lat FROM public.facility_profiles WHE
 check("ALLOW: CO can read facility location (for directions)", out.strip() == "-6.895200", out)
 
 # ── 14. Coordinators & facility leads ──────────────────────────────────────
-def staff_signup(email, name, app_role=None, user_role=None):
+def staff_signup(email, name, app_role=None, user_role=None, token=None):
     uid = str(uuid.uuid4())
     app = json.dumps({"provider": "email", **({"afyawork_role": app_role} if app_role else {})})
-    meta = json.dumps({"display_name": name, **({"role": user_role} if user_role else {})})
+    meta = json.dumps({"display_name": name, **({"role": user_role} if user_role else {}),
+                       **({"staff_invite_token": token} if token else {})})
     ok, (out, err) = run(f"""INSERT INTO auth.users (id, email, raw_app_meta_data, raw_user_meta_data, aud, role)
         VALUES ('{uid}', '{email}', '{app}'::jsonb, '{meta}'::jsonb, 'authenticated', 'authenticated');""",
         user="supabase_auth_admin")
@@ -410,7 +411,26 @@ def staff_signup(email, name, app_role=None, user_role=None):
 
 fake, _ = staff_signup("fake-coord@test.tz", "Fake", user_role="coordinator")
 check("BLOCK: public signup as coordinator", not fake or admin_sql(f"SELECT count(*) FROM public.users WHERE id='{fake}'") == "0")
-K1, e1 = staff_signup("k1@afyawork.test", "Neema Coordinator", app_role="coordinator")
+# Real Auth flow: the user row is inserted BEFORE app_metadata is attached, so the role
+# arrives via user_metadata + a one-time token that only the service role can plant.
+admin_sql("INSERT INTO public.staff_invites (email, token) VALUES ('k1@afyawork.test', 'tok-good-1'), "
+          "('late@afyawork.test', 'tok-late'), ('forge@afyawork.test', 'tok-real');"
+          "UPDATE public.staff_invites SET expires_at = now() - interval '1 minute' WHERE email = 'late@afyawork.test';")
+forged, _ = staff_signup("forge@afyawork.test", "Forger", user_role="coordinator", token="tok-guess")
+check("BLOCK: coordinator signup with a wrong invite token", not forged or admin_sql(f"SELECT count(*) FROM public.users WHERE id='{forged}'") == "0")
+other, _ = staff_signup("someone-else@afyawork.test", "Thief", user_role="coordinator", token="tok-real")
+check("BLOCK: coordinator signup reusing another email's token", not other or admin_sql(f"SELECT count(*) FROM public.users WHERE id='{other}'") == "0")
+late, _ = staff_signup("late@afyawork.test", "Late", user_role="coordinator", token="tok-late")
+check("BLOCK: coordinator signup with an expired token", not late or admin_sql(f"SELECT count(*) FROM public.users WHERE id='{late}'") == "0")
+for r in ("authenticated", "anon"):
+    ok, out, _ = as_user(None, "SELECT count(*) FROM public.staff_invites;", role=r)
+    check(f"BLOCK: {r} reads staff_invites", not ok, out)
+    ok, out, _ = as_user(None, "INSERT INTO public.staff_invites (email, token) VALUES ('x@y.tz','t');", role=r)
+    check(f"BLOCK: {r} plants a staff invite token", not ok, out)
+K1, e1 = staff_signup("k1@afyawork.test", "Neema Coordinator", user_role="coordinator", token="tok-good-1")
+check("ALLOW: coordinator via one-time invite token (real Auth order)",
+      K1 and admin_sql(f"SELECT role FROM public.users WHERE id='{K1}'") == "coordinator", e1[:160])
+check("token is consumed after use", admin_sql("SELECT count(*) FROM public.staff_invites WHERE email='k1@afyawork.test'") == "0")
 K2, e2 = staff_signup("k2@afyawork.test", "Juma Coordinator", app_role="coordinator")
 check("ALLOW: admin-created coordinator gets the coordinator role",
       K1 and admin_sql(f"SELECT role FROM public.users WHERE id='{K1}'") == "coordinator", e1[:120])

@@ -9,8 +9,8 @@
  *                                                        session stops at the next token refresh
  *   { action: 'restore', user_id }                       undo revoke
  *
- * The role can only be granted here: it is carried in app_metadata, which a
- * public sign-up cannot set, and handle_new_user reads it from there.
+ * The role can only be granted here: handle_new_user accepts 'coordinator' only with a
+ * matching one-time token from staff_invites, a table only the service role can write.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -112,19 +112,33 @@ Deno.serve(async (req) => {
         return json({ error: `${email} already has an AfyaWork ${who}.${hint}` }, 409);
       }
 
-      const pwd = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const hex = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n))).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const pwd = hex(24);
+      // Auth inserts the user before it attaches app_metadata, so handle_new_user can't see the role there.
+      // A short-lived one-time token in staff_invites (server-only table) proves this sign-up came from here.
+      const staffToken = hex(32);
+      const { error: sErr } = await db.from('staff_invites').upsert({
+        email, token: staffToken, created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 10 * 60e3).toISOString(),
+      });
+      if (sErr) return json({ error: `Could not prepare the invite: ${sErr.message}` }, 500);
       const { data: created, error: cErr } = await db.auth.admin.createUser({
         email, email_confirm: true, password: pwd,
-        user_metadata: { display_name: name, phone },
+        user_metadata: { role: 'coordinator', display_name: name, phone, staff_invite_token: staffToken },
         app_metadata: { afyawork_role: 'coordinator' },
       });
+      await db.from('staff_invites').delete().eq('email', email);
       if (cErr) {
         const msg = /already (been )?registered|already exists/i.test(cErr.message)
           ? `${email} already has an AfyaWork login. Use a different email for their coordinator account.`
-          : `Could not create the account: ${cErr.message}`;
+          : /database error/i.test(cErr.message)
+            ? `Could not create the account (the database rejected it). Nothing was saved; try again, and if it keeps failing send this to the developer: ${cErr.message}`
+            : `Could not create the account: ${cErr.message}`;
         return json({ error: msg }, 400);
       }
       const id = created.user.id;
+      // The token is single-use and already consumed; don't leave it in the profile
+      await db.auth.admin.updateUserById(id, { user_metadata: { role: 'coordinator', display_name: name, phone, staff_invite_token: null } });
 
       const tok = Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, '0')).join('');
       const { error: uErr } = await db.from('users').update({
