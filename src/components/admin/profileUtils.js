@@ -45,6 +45,7 @@ export function facilityCompleteness(f) {
     { label: 'Facility type',  done: !!f.facility_type },
     { label: 'Address',        done: !!f.address },
     { label: 'HFR code',       done: !!f.hfr_code },
+    { label: 'Map location',   done: !!(f.location_url || f.location_lat != null) },
     { label: 'Terms accepted', done: !!f.users?.tos_agreed_at },
   ];
   const done = items.filter((i) => i.done).length;

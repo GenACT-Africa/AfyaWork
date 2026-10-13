@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, BadgeCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getFacilityProfile, updateFacilityProfile, updateUserProfile, uploadAvatar, checkMyFacilityHfr, friendlyHfrError } from '../../lib/api';
 import { PageWrapper } from '../../components/layout/PageWrapper';
@@ -8,6 +9,8 @@ import { Button } from '../../components/common/Button';
 import { Input, Select, Textarea } from '../../components/common/Input';
 import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
+import { MapLocationField } from '../../components/common/MapLocationField';
+import { locationProblem, locationPayload } from '../../lib/maps';
 
 const HFR_NOTES = {
   operating:     ['text-green-700', 'Found on the Health Facility Registry'],
@@ -35,6 +38,7 @@ const PLANS = [
 
 export default function FacilityProfile() {
   const { user, refreshUser } = useAuth();
+  const { t } = useTranslation();
   const { show, ToastComponent } = useToast();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +47,8 @@ export default function FacilityProfile() {
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [form, setForm] = useState({ phone: '', facility_name: '', facility_type: '', address: '', bio: '', hfr_code: '' });
   const fileRef = useRef(null);
+  const [location, setLocation] = useState({ location_url: '', location_lat: null, location_lng: null });
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -57,6 +63,7 @@ export default function FacilityProfile() {
         bio: data?.users?.bio || '',
         hfr_code: data?.hfr_code || '',
       });
+      setLocation({ location_url: data?.location_url || '', location_lat: data?.location_lat ?? null, location_lng: data?.location_lng ?? null });
     }).finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -79,6 +86,9 @@ export default function FacilityProfile() {
 
   async function handleSave(e) {
     e.preventDefault();
+    const problem = locationProblem(location);
+    setLocationError(problem ? t(problem) : '');
+    if (problem) { show(t(problem), 'error'); return; }
     setSaving(true);
     const codeChanged = (form.hfr_code.trim() || null) !== (profile?.hfr_code || null);
     const [, { error }] = await Promise.all([
@@ -88,6 +98,7 @@ export default function FacilityProfile() {
         facility_type: form.facility_type,
         address: form.address,
         hfr_code: form.hfr_code.trim() || null,
+        ...locationPayload(location),
       }),
     ]);
     if (error) {
@@ -168,6 +179,7 @@ export default function FacilityProfile() {
                 <option value="Diagnostic Centre">Diagnostic Centre</option>
               </Select>
               <Input label="Address" value={form.address} onChange={set('address')} placeholder="Kinondoni, Dar es Salaam" />
+              <MapLocationField value={location} onChange={(v) => { setLocation(v); setLocationError(''); }} required error={locationError} />
               <div>
                 <Input label="HFR facility code" value={form.hfr_code} onChange={set('hfr_code')} placeholder="125039-8" className="font-mono" />
                 <HfrNote profile={profile} />

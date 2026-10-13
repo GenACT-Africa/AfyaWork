@@ -10,6 +10,7 @@ import { useToast } from '../../components/common/Toast';
 import { Avatar } from '../../components/common/Avatar';
 import { useICA } from '../../components/legal/ICAGate';
 import { FileText } from 'lucide-react';
+import { DirectionsLink } from '../../components/common/DirectionsLink';
 
 const SHIFT_TYPES = ['All', 'Day (8AM-4PM)', 'Evening (4PM-10PM)', 'Night (10PM-6AM)', '24-Hour', 'Weekend'];
 
@@ -156,10 +157,11 @@ function ShiftCard({ shift, applied, applying, onApply, t }) {
           <Clock className="w-3.5 h-3.5 text-gray-400" />
           {new Date(shift.shift_date + 'T00:00:00').toLocaleDateString('en-TZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
         </span>
-        {facility?.address && (
-          <span className="flex items-center gap-1.5">
+        {(facility?.address || facility?.location_url || facility?.location_lat != null) && (
+          <span className="flex items-center gap-1.5 flex-wrap">
             <MapPin className="w-3.5 h-3.5 text-gray-400" />
-            {facility.address}
+            {facility?.address}
+            <DirectionsLink facility={facility} className={facility?.address ? 'ml-1' : ''} />
           </span>
         )}
       </div>

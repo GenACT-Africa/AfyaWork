@@ -290,6 +290,8 @@ function ApplicationCard({ app, userId, t, show, onRefresh, paymentRecord }) {
             myRating={myRating}
             paymentRecord={paymentRecord}
             facilityName={facility?.facility_name}
+            facilityAddress={facility?.address}
+            facilityLocation={facility}
             onAccept={handleAccept}
             onDecline={() => setDeclineModal(true)}
             onCheckin={handleCheckin}

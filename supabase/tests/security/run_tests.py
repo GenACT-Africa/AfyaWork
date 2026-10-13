@@ -64,6 +64,7 @@ UPDATE public.users SET phone='0711000001' WHERE id='{C1}';
 UPDATE public.users SET phone='0711000002' WHERE id='{C2}';
 UPDATE public.users SET phone='0711000003' WHERE id='{C3}';
 UPDATE public.co_profiles SET ica_signed_at = now() WHERE user_id IN ('{C1}','{C2}');
+UPDATE public.facility_profiles SET location_lat = -6.8235, location_lng = 39.2695 WHERE user_id IN ('{F}','{F2}');
 UPDATE public.co_profiles SET employment_availability_status='open_fulltime' WHERE user_id='{C3}';
 INSERT INTO public.co_mobile_money (co_id, mobile_money_provider, mobile_money_number) VALUES ('{C1}','mpesa','0755000001');
 UPDATE public.system_config SET value='0' WHERE key='__none__';
@@ -247,7 +248,8 @@ expect_ok("admin resolves dispute (approve)", ADMIN, f"SELECT public.resolve_dis
     verify=lambda: admin_sql(f"SELECT count(*) FROM public.shift_payments WHERE shift_id='{S3}'") == "1")
 
 # ── 11. Facility HFR verification ─────────────────────────────────────────────
-F3, _ = signup("fac3@test.tz", {"role": "facility", "display_name": "Morcep", "facility_name": "Morcep Dispensary", "hfr_code": " 1250398 ", "phone": " 0754 051 704 "})
+F3, _ = signup("fac3@test.tz", {"role": "facility", "display_name": "Morcep", "facility_name": "Morcep Dispensary", "hfr_code": " 1250398 ", "phone": " 0754 051 704 ",
+                     "location_url": "https://www.google.com/maps/place/Morcep/@-6.89,39.27,17z", "location_lat": "-6.8952", "location_lng": "39.2726"})
 check("ALLOW: signup stores the phone number",
       admin_sql(f"SELECT phone FROM public.users WHERE id='{F3}'") == "0754 051 704")
 check("ALLOW: signup stores normalised HFR code",
@@ -365,6 +367,35 @@ ok, out, _ = as_user(C1, "SELECT count(*) FROM public.admin_shift_actions;")
 check("BLOCK: CO reads admin action log", out.strip() == "0", out)
 expect_blocked("facility writes admin action log", F,
     f"INSERT INTO public.admin_shift_actions (shift_id, action) VALUES ('{S4}', 'cancel');")
+
+# ── 13. Facility Google Maps location ───────────────────────────────────────
+check("ALLOW: signup stores Maps link + coordinates",
+      admin_sql(f"SELECT location_lat||','||location_lng||' '||(location_url LIKE 'https://www.google.com/maps/%') FROM public.facility_profiles WHERE user_id='{F3}'")
+      == "-6.895200,39.272600 true")
+F5, _ = signup("fac5@test.tz", {"role": "facility", "display_name": "Sketchy", "facility_name": "Sketchy",
+                                "location_url": "https://evil.example/maps/login", "location_lat": "abc", "location_lng": "39"})
+check("ALLOW: signup drops a non-Google link and bad coordinates (signup still works)",
+      F5 and admin_sql(f"SELECT coalesce(location_url,'none')||'/'||coalesce(location_lat::text,'none') FROM public.facility_profiles WHERE user_id='{F5}'") == "none/none")
+expect_blocked("facility without a location posts a shift", F5,
+    f"INSERT INTO public.shifts (facility_id, shift_date, shift_type, pay_amount) VALUES ('{F5}', current_date + 2, 'Day (8AM-4PM)', 35000);")
+expect_blocked("facility sets a non-Google 'map' link", F5,
+    f"UPDATE public.facility_profiles SET location_url='https://google.evil.com/maps/x' WHERE user_id='{F5}';",
+    verify=lambda: admin_sql(f"SELECT coalesce(location_url,'') FROM public.facility_profiles WHERE user_id='{F5}'") != "")
+expect_blocked("facility sets latitude without longitude", F5,
+    f"UPDATE public.facility_profiles SET location_lat=-6.8 WHERE user_id='{F5}';",
+    verify=lambda: admin_sql(f"SELECT location_lat IS NOT NULL FROM public.facility_profiles WHERE user_id='{F5}'") == "t")
+expect_ok("facility adds a short Google Maps link", F5,
+    f"UPDATE public.facility_profiles SET location_url=' https://maps.app.goo.gl/AbCdEf123 ' WHERE user_id='{F5}';",
+    verify=lambda: admin_sql(f"SELECT location_url FROM public.facility_profiles WHERE user_id='{F5}'") == "https://maps.app.goo.gl/AbCdEf123")
+expect_ok("facility with a location posts a shift", F5,
+    f"INSERT INTO public.shifts (facility_id, shift_date, shift_type, pay_amount) VALUES ('{F5}', current_date + 2, 'Day (8AM-4PM)', 35000);")
+expect_blocked("facility removes its location", F5,
+    f"UPDATE public.facility_profiles SET location_url=NULL WHERE user_id='{F5}';",
+    verify=lambda: admin_sql(f"SELECT location_url IS NULL FROM public.facility_profiles WHERE user_id='{F5}'") == "t")
+expect_ok("facility switches to GPS position", F5,
+    f"UPDATE public.facility_profiles SET location_lat=-6.7924, location_lng=39.2083 WHERE user_id='{F5}';")
+ok, out, _ = as_user(C1, f"SELECT location_lat FROM public.facility_profiles WHERE user_id='{F3}';")
+check("ALLOW: CO can read facility location (for directions)", out.strip() == "-6.895200", out)
 
 # ── Report ───────────────────────────────────────────────────────────────────
 passed = sum(1 for _, ok, _ in results if ok)

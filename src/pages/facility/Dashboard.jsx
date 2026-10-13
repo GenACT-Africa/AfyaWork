@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Users, XCircle, Plus, ChevronRight, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Users, XCircle, Plus, ChevronRight, ShieldCheck, ShieldAlert, MapPin } from 'lucide-react';
+import { hasLocation } from '../../lib/maps';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getFacilityDashboardStats, getFacilityShifts, getFacilityProfile, checkMyFacilityHfr } from '../../lib/api';
@@ -77,6 +78,20 @@ export default function FacilityDashboard() {
       subtitle={t('facility.overview')}
       action={<Button to="/facility/post-shift"><Plus className="w-4 h-4" />{t('facility.post_shift')}</Button>}
     >
+      {/* ── Google Maps location (needed to post shifts) ── */}
+      {profile && !hasLocation(profile) && (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 text-red-800 px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
+          <div className="flex items-start gap-3 flex-1">
+            <MapPin className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">{t('location.banner_title')}</p>
+              <p>{t('location.banner_body')}</p>
+            </div>
+          </div>
+          <Button to="/facility/profile" size="sm" variant="secondary">{t('location.banner_cta')}</Button>
+        </div>
+      )}
+
       {/* ── Facility verification (HFR) ── */}
       {profile && !profile.verified && (
         <HfrBanner profile={profile} t={t} />

@@ -206,5 +206,24 @@
     "failed": "Couldn't turn on notifications. Please try again.",
     "install_title": "Add AfyaWork to your Home Screen",
     "install_body": "On iPhone, tap Share, then “Add to Home Screen”. Open AfyaWork from your Home Screen to turn on notifications."
+  },
+  "location": {
+    "label": "Google Maps location",
+    "placeholder": "Paste the Google Maps link, e.g. https://maps.app.goo.gl/…",
+    "help": "In Google Maps, find your facility → Share → Copy link, and paste it here. Or tap \"Use my current location\" while you are at the facility.",
+    "use_gps": "Use my current location",
+    "locating": "Finding your location…",
+    "gps_saved": "GPS position saved ({{lat}}, {{lng}}, accurate to ~{{acc}} m)",
+    "coords_saved": "Pin found: {{lat}}, {{lng}}",
+    "view_map": "Check it on the map",
+    "err_invalid": "That is not a Google Maps link. In Google Maps tap Share → Copy link.",
+    "err_required": "Add your Google Maps location so COs can find you.",
+    "gps_denied": "Location permission was refused. Allow it in your browser, or paste a Google Maps link instead.",
+    "gps_unavailable": "Could not get your location. Paste a Google Maps link instead.",
+    "gps_replaced": "The new link replaced the GPS position.",
+    "directions": "Directions",
+    "banner_title": "Add your Google Maps location",
+    "banner_body": "COs need it to find you, and you can’t post shifts until it is added.",
+    "banner_cta": "Add location"
   }
 }

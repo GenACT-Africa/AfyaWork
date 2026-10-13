@@ -30,7 +30,7 @@ async function attachFacilityProfiles(shifts) {
   const ids = [...new Set(shifts.map((s) => s.facility_id))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name, facility_type, address, verified, users(avatar_url, bio)')
+    .select('user_id, facility_name, facility_type, address, verified, location_url, location_lat, location_lng, users(avatar_url, bio)')
     .in('user_id', ids);
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
   return shifts.map((s) => ({ ...s, facility_profiles: byId[s.facility_id] || null }));
@@ -209,7 +209,7 @@ export async function getMyCOApplications(coId) {
   const facilityIds = [...new Set(apps.map((a) => a.shifts?.facility_id).filter(Boolean))];
   const { data: profiles } = await supabase
     .from('facility_profiles')
-    .select('user_id, facility_name, users(avatar_url, bio)')
+    .select('user_id, facility_name, address, location_url, location_lat, location_lng, users(avatar_url, bio)')
     .in('user_id', facilityIds);
 
   const byId = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
@@ -906,9 +906,9 @@ export async function adminResendInvite(userId) {
   return { error: null };
 }
 
-export async function adminUpdateFacility(userId, { facility_name, facility_type, address, phone }) {
+export async function adminUpdateFacility(userId, { facility_name, facility_type, address, phone, location }) {
   const [profileRes, userRes] = await Promise.all([
-    supabase.from('facility_profiles').update({ facility_name, facility_type, address }).eq('user_id', userId),
+    supabase.from('facility_profiles').update({ facility_name, facility_type, address, ...(location || {}) }).eq('user_id', userId),
     supabase.from('users').update({ display_name: facility_name, phone }).eq('id', userId),
   ]);
   return { error: profileRes.error || userRes.error || null };
@@ -1399,7 +1399,7 @@ export async function getAdminShiftDetail(shiftId) {
 
   const [{ data: facility }, { data: apps }, { data: log }] = await Promise.all([
     supabase.from('facility_profiles')
-      .select('user_id, facility_name, facility_type, address, verified, users(phone, email, display_name)')
+      .select('user_id, facility_name, facility_type, address, verified, location_url, location_lat, location_lng, users(phone, email, display_name)')
       .eq('user_id', shift.facility_id).single(),
     supabase.from('applications').select('id, co_id, status, applied_at').eq('shift_id', shiftId)
       .order('applied_at', { ascending: true }),

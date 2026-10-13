@@ -7,6 +7,8 @@ import { Button } from '../components/common/Button';
 import { Input, Select } from '../components/common/Input';
 import { LanguageToggle } from '../components/common/LanguageToggle';
 import { recordTosAgreement } from '../lib/api';
+import { MapLocationField } from '../components/common/MapLocationField';
+import { locationProblem, locationPayload } from '../lib/maps';
 
 /** Tanzanian mobile: 07xx / 06xx xxx xxx, or with +255 / 255. Spaces and dashes allowed. */
 function isTzPhone(raw) {
@@ -38,6 +40,7 @@ export function RegisterPage() {
     license_number: '', specialization: '',
     facility_name: '', facility_type: '', address: '', hfr_code: '',
   });
+  const [location, setLocation] = useState({ location_url: '', location_lat: null, location_lng: null });
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -50,6 +53,7 @@ export function RegisterPage() {
     if (role === 'co' && !form.license_number) { setError(t('auth.err_license')); return; }
     if (role === 'facility' && !form.facility_name) { setError(t('auth.err_facility_name')); return; }
     if (!isTzPhone(form.phone)) { setError(t('auth.err_phone')); return; }
+    if (role === 'facility' && locationProblem(location)) { setError(t(locationProblem(location))); return; }
 
     if (!tosAgreed) { setError('You must agree to the Terms of Service and Privacy Policy to continue.'); return; }
 
@@ -62,7 +66,8 @@ export function RegisterPage() {
       phone: form.phone.trim() || undefined,
       ...(role === 'co'
         ? { license_number: form.license_number, specialization: form.specialization }
-        : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address, hfr_code: form.hfr_code.trim() }),
+        : { facility_name: form.facility_name, facility_type: form.facility_type, address: form.address, hfr_code: form.hfr_code.trim(),
+            ...locationPayload(location) }),
     };
     const { data, error: err } = await signUp(payload);
     if (err) { setLoading(false); setError(err.message); return; }
@@ -159,6 +164,7 @@ export function RegisterPage() {
               <option value="Diagnostic Centre">{t('auth.diagnostic')}</option>
             </Select>
             <Input label={t('auth.address')} value={form.address} onChange={set('address')} placeholder={t('auth.address_placeholder')} />
+            <MapLocationField value={location} onChange={setLocation} required />
             <div>
               <Input label={t('auth.hfr_code')} value={form.hfr_code} onChange={set('hfr_code')} placeholder="125039-8" />
               <p className="text-xs text-gray-400 mt-1">{t('auth.hfr_code_hint')}</p>

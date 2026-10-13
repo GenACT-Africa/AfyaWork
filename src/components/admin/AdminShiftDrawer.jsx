@@ -9,6 +9,7 @@ import { ProfileDrawer, DrawerSkeleton, Section } from './ProfileKit';
 import { MctStatusBadge } from './MctVerification';
 import { formatDate, formatTZS } from './profileUtils';
 import { ShiftFormModal, ConfirmModal, Modal } from './ShiftAdminForms';
+import { DirectionsLink } from '../common/DirectionsLink';
 import {
   getAdminShiftDetail, getAdminCOOptions, adminUpdateShift, adminCancelShift, adminUnassignCO,
   adminApproveApplication, adminSetApplicationStatus, adminAddApplicant,
@@ -296,6 +297,11 @@ export function AdminShiftDrawer({ shiftId, onClose, onChanged, onResolveDispute
                   {s.facility?.verified && <BadgeCheck className="w-4 h-4 text-green-600" />}
                 </p>
                 {s.facility?.address && <p className="text-xs text-gray-500 mt-0.5">{s.facility.address}</p>}
+                <div className="text-xs mt-1">
+                  {s.facility && (s.facility.location_url || s.facility.location_lat != null)
+                    ? <DirectionsLink facility={s.facility} />
+                    : <span className="text-red-600">No Google Maps location</span>}
+                </div>
                 {s.facility?.users?.phone && (
                   <a href={`tel:${s.facility.users.phone}`} className="text-xs text-teal-700 inline-flex items-center gap-1 mt-1.5 hover:underline">
                     <Phone className="w-3 h-3" /> {s.facility.users.phone}

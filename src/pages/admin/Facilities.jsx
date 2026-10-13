@@ -21,8 +21,10 @@ import {
   adminCheckFacilityHfr,
 } from '../../lib/api';
 import { downloadXlsx, exportFilename, toDate } from '../../lib/exportXlsx';
+import { MapLocationField } from '../../components/common/MapLocationField';
+import { isGoogleMapsUrl, locationPayload, hasLocation } from '../../lib/maps';
 
-const BLANK = { email: '', facility_name: '', facility_type: '', address: '', phone: '' };
+const BLANK = { email: '', facility_name: '', facility_type: '', address: '', phone: '', location: { location_url: '', location_lat: null, location_lng: null } };
 
 const PLAN_LABELS = { payg: 'Pay-as-you-go', starter: 'Starter', growth: 'Growth', enterprise: 'Enterprise' };
 
@@ -37,6 +39,7 @@ const FILTERS = [
   { key: 'hfr_problem', label: 'HFR problem' },
   { key: 'unchecked',   label: 'HFR not checked' },
   { key: 'verified',    label: 'Verified' },
+  { key: 'no_location', label: 'No map location' },
 ];
 
 const HFR_PROBLEM = ['not_operating', 'not_found'];
@@ -55,6 +58,10 @@ const EXPORT_COLUMNS = [
   { header: 'Plan',                 value: (f) => PLAN_LABELS[f.subscription_plan] || f.subscription_plan },
   { header: 'Verified',             value: (f) => !!f.verified },
   { header: 'HFR code',             value: (f) => f.hfr_code, width: 14 },
+  { header: 'Map location',         value: (f) => (hasLocation(f) ? 'Yes' : 'No'), width: 14 },
+  { header: 'Latitude',             value: (f) => (f.location_lat != null ? Number(f.location_lat) : null), width: 12 },
+  { header: 'Longitude',            value: (f) => (f.location_lng != null ? Number(f.location_lng) : null), width: 12 },
+  { header: 'Google Maps link',     value: (f) => f.location_url, width: 36 },
   { header: 'HFR status',           value: (f) => HFR_STATUS[hfrStatusOf(f)]?.label, width: 20 },
   { header: 'Name on HFR',          value: (f) => f.hfr_name, width: 28 },
   { header: 'HFR last checked',     value: (f) => toDate(f.hfr_checked_at) },
@@ -157,7 +164,7 @@ export default function AdminFacilities() {
   function changeView(v) { setView(v); saveView(v); }
 
   const counts = useMemo(() => {
-    const c = { all: facilities.length, active: 0, pending: 0, posting: 0, no_shifts: 0, incomplete: 0, to_review: 0, hfr_problem: 0, unchecked: 0, verified: 0 };
+    const c = { all: facilities.length, active: 0, pending: 0, posting: 0, no_shifts: 0, incomplete: 0, to_review: 0, hfr_problem: 0, unchecked: 0, verified: 0, no_location: 0 };
     facilities.forEach((f) => {
       const st = f.users?.account_status || 'active';
       if (st === 'active') c.active++; else c.pending++;
@@ -167,6 +174,7 @@ export default function AdminFacilities() {
       if (HFR_PROBLEM.includes(f.hfr_status)) c.hfr_problem++;
       if (isUnchecked(f)) c.unchecked++;
       if (f.verified) c.verified++;
+      if (!hasLocation(f)) c.no_location++;
     });
     return c;
   }, [facilities]);
@@ -185,6 +193,7 @@ export default function AdminFacilities() {
         if (filter === 'hfr_problem' && !HFR_PROBLEM.includes(f.hfr_status)) return false;
         if (filter === 'unchecked' && !isUnchecked(f)) return false;
         if (filter === 'verified' && !f.verified) return false;
+        if (filter === 'no_location' && hasLocation(f)) return false;
         if (!q) return true;
         return (
           f.facility_name?.toLowerCase().includes(q) ||
@@ -216,6 +225,7 @@ export default function AdminFacilities() {
       facility_type: f.facility_type || '',
       address:       f.address || '',
       phone:         f.users?.phone || '',
+      location:      { location_url: f.location_url || '', location_lat: f.location_lat ?? null, location_lng: f.location_lng ?? null },
     });
     setFormError('');
     setModal({ mode: 'edit', userId: f.user_id });
@@ -226,11 +236,14 @@ export default function AdminFacilities() {
     setFormError('');
     if (!form.facility_name.trim()) { setFormError('Facility name is required.'); return; }
     if (modal.mode === 'add' && !form.email.trim()) { setFormError('Email is required.'); return; }
+    if (form.location.location_url.trim() && !isGoogleMapsUrl(form.location.location_url)) {
+      setFormError('The map location must be a Google Maps link.'); return;
+    }
 
     setSaving(true);
     const { error } = modal.mode === 'add'
       ? await adminCreateFacility(form)
-      : await adminUpdateFacility(modal.userId, form);
+      : await adminUpdateFacility(modal.userId, { ...form, location: locationPayload(form.location) });
     setSaving(false);
 
     if (error) { setFormError(error.message); return; }
@@ -573,6 +586,9 @@ export default function AdminFacilities() {
             </Select>
             <Input label="Address" value={form.address} onChange={set('address')} placeholder="e.g. Upanga, Dar es Salaam" />
             <Input label="Phone" type="tel" value={form.phone} onChange={set('phone')} placeholder="+255 7xx xxx xxx" />
+            {modal.mode === 'edit' && (
+              <MapLocationField value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} />
+            )}
 
             {formError && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-100 px-4 py-3 rounded-xl">{formError}</p>

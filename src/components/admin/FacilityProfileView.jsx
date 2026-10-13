@@ -9,6 +9,7 @@ import {
 } from './ProfileKit';
 import { facilityCompleteness, formatDate, formatTZS } from './profileUtils';
 import { HfrVerificationPanel, HfrStatusBadge } from './HfrVerification';
+import { mapUrl } from '../../lib/maps';
 
 // Mirrors the plans on the facility's own Profile page
 const PLANS = [
@@ -129,6 +130,16 @@ export function FacilityProfileView({ userId, onClose, onEdit, onResend, onDelet
                       <Field label="Contact Email" value={u.email} />
                       <Field label="Contact Phone" value={u.phone} />
                       <div className="sm:col-span-2"><Field label="Address" value={f.address} /></div>
+                      <div className="sm:col-span-2 flex flex-col gap-1">
+                        <span className="text-sm font-medium text-gray-700">Google Maps location</span>
+                        {mapUrl(f) ? (
+                          <a href={mapUrl(f)} target="_blank" rel="noreferrer" className="text-sm px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-teal-700 hover:underline break-all">
+                            {f.location_lat != null ? `${Number(f.location_lat).toFixed(5)}, ${Number(f.location_lng).toFixed(5)}` : f.location_url}
+                          </a>
+                        ) : (
+                          <span className="text-sm px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700">Not added — this facility can't post shifts</span>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-4">
                       <span className="text-sm font-medium text-gray-700">About</span>

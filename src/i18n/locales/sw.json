@@ -206,5 +206,24 @@
     "failed": "Imeshindikana kuwasha arifa. Tafadhali jaribu tena.",
     "install_title": "Weka AfyaWork kwenye Skrini ya Mwanzo",
     "install_body": "Kwenye iPhone, gusa Shiriki, kisha “Ongeza kwenye Skrini ya Mwanzo”. Fungua AfyaWork kutoka Skrini ya Mwanzo ili kuwasha arifa."
+  },
+  "location": {
+    "label": "Mahali kwenye Google Maps",
+    "placeholder": "Bandika kiungo cha Google Maps, mfano https://maps.app.goo.gl/…",
+    "help": "Kwenye Google Maps, tafuta kituo chako → Share → Copy link, kisha bandika hapa. Au bonyeza \"Tumia mahali nilipo sasa\" ukiwa kituoni.",
+    "use_gps": "Tumia mahali nilipo sasa",
+    "locating": "Inatafuta mahali ulipo…",
+    "gps_saved": "Mahali pa GPS pamehifadhiwa ({{lat}}, {{lng}}, usahihi ~{{acc}} m)",
+    "coords_saved": "Alama imepatikana: {{lat}}, {{lng}}",
+    "view_map": "Hakiki kwenye ramani",
+    "err_invalid": "Hiki si kiungo cha Google Maps. Kwenye Google Maps bonyeza Share → Copy link.",
+    "err_required": "Weka mahali pako kwenye Google Maps ili Clinical Officers wakupate.",
+    "gps_denied": "Ruhusa ya mahali imekataliwa. Iruhusu kwenye kivinjari, au bandika kiungo cha Google Maps.",
+    "gps_unavailable": "Imeshindwa kupata mahali ulipo. Bandika kiungo cha Google Maps.",
+    "gps_replaced": "Kiungo kipya kimechukua nafasi ya mahali pa GPS.",
+    "directions": "Maelekezo",
+    "banner_title": "Weka mahali pako kwenye Google Maps",
+    "banner_body": "Clinical Officers wanahitaji kukupata, na huwezi kutangaza zamu mpaka uweke mahali.",
+    "banner_cta": "Weka mahali"
   }
 }

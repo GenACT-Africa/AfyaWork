@@ -11,6 +11,7 @@
  *   coName           — CO display name (facility view)
  *   facilityName     — facility display name (CO view)
  *   facilityAddress  — facility address string (CO view, optional)
+ *   facilityLocation — facility row with location_url / location_lat / location_lng (CO view: Directions)
  *   onAccept         — fn (CO: accept offer)
  *   onDecline        — fn (CO: open decline modal)
  *   onCheckin        — fn (CO: check in)
@@ -25,6 +26,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DirectionsLink } from '../common/DirectionsLink';
 import {
   CheckCircle2, LogIn, LogOut, CheckCircle, Star,
   AlertTriangle, ChevronDown, ChevronUp, MapPin, Wallet,
@@ -327,7 +329,7 @@ function PaymentStatusPanel({ paymentRecord }) {
 // ── Next Action: CO view ──────────────────────────────────────────
 
 function CONextAction({
-  shift, myRating, facilityName, facilityAddress,
+  shift, myRating, facilityName, facilityAddress, facilityLocation,
   onAccept, onDecline, onCheckin, onCheckout, onRate,
   actionLoading, paymentRecord,
 }) {
@@ -339,6 +341,13 @@ function CONextAction({
     return (
       <ActionPanel bg="blue" title="🎉 You've been selected for this shift!">
         <p className="text-sm text-gray-600 mt-0.5">Review and respond to this offer. It expires in 24 hours.</p>
+        {(facilityName || facilityAddress) && (
+          <p className="text-sm text-gray-500 mt-1 flex flex-wrap items-center gap-1">
+            <MapPin className="w-3.5 h-3.5 shrink-0" />
+            {facilityName}{facilityAddress ? ` — ${facilityAddress}` : ''}
+            <DirectionsLink facility={facilityLocation} className="ml-1" />
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 mt-3">
           <Button size="sm" loading={actionLoading === 'accept'} disabled={!!actionLoading && actionLoading !== 'accept'} onClick={onAccept}>
             <CheckCircle2 className="w-4 h-4" /> Accept Offer
@@ -364,7 +373,8 @@ function CONextAction({
             {facilityName}{facilityAddress ? ` — ${facilityAddress}` : ''}
           </p>
         )}
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <DirectionsLink facility={facilityLocation} variant="button" />
           <Button size="sm" loading={actionLoading === 'checkin'} onClick={onCheckin}>
             <LogIn className="w-4 h-4" /> Check In Now
           </Button>
@@ -586,7 +596,7 @@ function FacilityNextAction({
 
 export function ShiftProgressTracker({
   shift, role, myRating, paymentRecord,
-  coName, facilityName, facilityAddress,
+  coName, facilityName, facilityAddress, facilityLocation,
   onAccept, onDecline, onCheckin, onCheckout,
   onApproveCheckin, onDisputeCheckin, onApproveCheckout, onDisputeCheckout,
   onRate,
@@ -682,6 +692,7 @@ export function ShiftProgressTracker({
                 myRating={myRating}
                 facilityName={facilityName}
                 facilityAddress={facilityAddress}
+                facilityLocation={facilityLocation}
                 onAccept={onAccept}
                 onDecline={onDecline}
                 onCheckin={onCheckin}
