@@ -35,7 +35,7 @@ WITH ins AS (
   RETURNING id, name
 )
 INSERT INTO public.lead_steps (lead_id, step_id, done_at)
-SELECT ins.id, s.key, (s.value #>> '{}')::date + time '12:00' AT TIME ZONE 'Africa/Dar_es_Salaam'
+SELECT ins.id, s.key, ((s.value #>> '{}')::date + time '12:00') AT TIME ZONE 'Africa/Dar_es_Salaam'
   FROM ins JOIN _import i ON i.name = ins.name
   CROSS JOIN LATERAL jsonb_each(i.steps) s;
 
