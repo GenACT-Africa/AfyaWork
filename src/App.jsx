@@ -27,6 +27,7 @@ import AdminShifts from './pages/admin/Shifts';
 import AdminPayments from './pages/admin/Payments';
 import AdminFeedback from './pages/admin/Feedback';
 import AdminCoordinators from './pages/admin/Coordinators';
+import AdminLeads from './pages/admin/Leads';
 import CoordinatorShell from './pages/coordinator/CoordinatorShell';
 import Pipeline from './pages/coordinator/Pipeline';
 import LeadDetail from './pages/coordinator/LeadDetail';
@@ -78,6 +79,7 @@ function AppShell() {
         <Route path="/admin/payments"   element={<RequireAdmin><AdminPayments /></RequireAdmin>} />
         <Route path="/admin/feedback"   element={<RequireAdmin><AdminFeedback /></RequireAdmin>} />
         <Route path="/admin/coordinators" element={<RequireAdmin><AdminCoordinators /></RequireAdmin>} />
+        <Route path="/admin/leads"        element={<RequireAdmin><AdminLeads /></RequireAdmin>} />
 
         {/* Coordinator area: mobile-first, own header and bottom tabs */}
         <Route path="/coordinator" element={<RequireCoordinator><CoordinatorShell /></RequireCoordinator>}>
