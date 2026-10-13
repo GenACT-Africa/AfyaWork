@@ -278,6 +278,7 @@ expect_blocked("facility writes its own HFR check row", F3,
 admin_sql(f"INSERT INTO public.facility_hfr_checks (facility_id, trigger_source, status, hfr_phone) VALUES ('{F3}','admin','operating','0754051704');")
 ok, out, _ = as_user(F3, "SELECT count(*) FROM public.facility_hfr_checks;")
 check("BLOCK: facility reads HFR check history (official phone etc.)", out.strip() == "0", out)
+admin_sql(f"UPDATE public.facility_profiles SET contract_signed_at = now(), contract_note = 'seed' WHERE user_id='{F3}';")
 expect_ok("admin approves operating facility", ADMIN,
     f"SELECT public.admin_set_facility_verification('{F3}', true, 'Called HFR number');",
     verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F3}'") == "t")
@@ -495,6 +496,77 @@ expect_blocked("revoked coordinator reactivates self", K2, f"UPDATE public.users
     verify=lambda: admin_sql(f"SELECT account_status FROM public.users WHERE id='{K2}'") == "active")
 expect_ok("admin deletes a lead", ADMIN, f"DELETE FROM public.facility_leads WHERE id='{L2}';",
     verify=lambda: admin_sql(f"SELECT count(*) FROM public.lead_events WHERE lead_id='{L2}' AND action='deleted'") == "1")
+
+# ── 15. Lead files, contract gate, lead board ─────────────────────────────────
+expect_blocked("facility marks its own contract signed", F6,
+    f"UPDATE public.facility_profiles SET contract_signed_at = now() WHERE user_id='{F6}';",
+    verify=lambda: admin_sql(f"SELECT contract_signed_at IS NOT NULL FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_blocked("coordinator confirms a contract", K1, f"SELECT public.admin_set_contract_signed('{F6}', true, NULL, 'paper copy');",
+    verify=lambda: admin_sql(f"SELECT contract_signed_at IS NOT NULL FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_blocked("coordinator approves a facility", K1, f"SELECT public.admin_set_facility_verification('{F6}', true);",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_ok("HFR check marks the facility operating (service role)", None,
+    f"UPDATE public.facility_profiles SET hfr_status='operating', hfr_checked_at=now() WHERE user_id='{F6}';", role="service_role")
+admin_sql("UPDATE public.system_config SET value='true' WHERE key='require_verified_facilities';")
+expect_blocked("admin approves a facility with no signed contract", ADMIN, f"SELECT public.admin_set_facility_verification('{F6}', true, 'called');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_blocked("admin confirms a contract with no scan and no note", ADMIN, f"SELECT public.admin_set_contract_signed('{F6}', true);",
+    verify=lambda: admin_sql(f"SELECT contract_signed_at IS NOT NULL FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+
+FL1 = last(expect_ok("coordinator records an uploaded licence", K1,
+    f"INSERT INTO public.lead_files (lead_id, kind, storage_path, file_name, mime_type, size_bytes) VALUES ('{L3}', 'annual_licence', '{L3}/licence.jpg', 'licence.jpg', 'image/jpeg', 120000) RETURNING id;"))
+FC1 = last(expect_ok("coordinator records the contract scan", K1,
+    f"INSERT INTO public.lead_files (lead_id, kind, storage_path, file_name, mime_type, size_bytes) VALUES ('{L3}', 'contract_scan', '{L3}/contract.pdf', 'contract.pdf', 'application/pdf', 900000) RETURNING id;"))
+expect_blocked("file path outside its lead", K1,
+    f"INSERT INTO public.lead_files (lead_id, kind, storage_path, mime_type, size_bytes) VALUES ('{L3}', 'site_photo', '{L1}/x.jpg', 'image/jpeg', 100);")
+expect_blocked("upload of a disallowed file type", K1,
+    f"INSERT INTO public.lead_files (lead_id, kind, storage_path, mime_type, size_bytes) VALUES ('{L3}', 'site_photo', '{L3}/x.exe', 'application/x-msdownload', 100);")
+expect_blocked("upload over 10 MB", K1,
+    f"INSERT INTO public.lead_files (lead_id, kind, storage_path, mime_type, size_bytes) VALUES ('{L3}', 'site_photo', '{L3}/big.jpg', 'image/jpeg', 20000000);")
+expect_blocked("coordinator deletes a file", K1, f"DELETE FROM public.lead_files WHERE id='{FL1}';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM public.lead_files WHERE id='{FL1}'") == "0")
+expect_blocked("admin confirms a contract with a licence instead of the contract scan", ADMIN,
+    f"SELECT public.admin_set_contract_signed('{F6}', true, '{FL1}');",
+    verify=lambda: admin_sql(f"SELECT contract_signed_at IS NOT NULL FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_ok("admin confirms the contract from the scan", ADMIN, f"SELECT public.admin_set_contract_signed('{F6}', true, '{FC1}');",
+    verify=lambda: admin_sql(f"SELECT contract_file_id FROM public.facility_profiles WHERE user_id='{F6}'") == FC1)
+expect_ok("admin approves once the contract is signed", ADMIN, f"SELECT public.admin_set_facility_verification('{F6}', true, 'called');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F6}'") == "t")
+expect_ok("verified facility posts its first shift", F6,
+    f"INSERT INTO public.shifts (facility_id, shift_date, shift_type, pay_amount) VALUES ('{F6}', current_date + 3, 'Weekend', 40000);")
+admin_sql("UPDATE public.system_config SET value='false' WHERE key='require_verified_facilities';")
+
+ok, out, err = as_user(K1, f"SELECT (b->'auto') ? '6a', (b->'auto') ? '6b', (b->'auto') ? '6f', (b->'auto') ? '6g', (b->'auto') ? '7d', (b->'auto') ? '7e', b->'facility'->>'shifts_posted', jsonb_array_length(b->'files') FROM public.lead_board('{L3}') b;")
+check("ALLOW: lead board ticks 6a 6b 6f 6g 7d from live data (7e not yet)", last(out) == "t|t|t|t|t|f|1|2", (err or out)[:160])
+ok, out, err = as_user(K1, f"SELECT b->'steps' ? '6e', jsonb_typeof(b->'facility') = 'null' FROM public.lead_board('{L1}') b;")
+check("ALLOW: lead board shows manual ticks; unlinked lead has no facility", last(out) == "t|t", (err or out)[:160])
+ok, out, _ = as_user(K1, "SELECT count(*) FROM public.lead_board();")
+check("ALLOW: coordinator sees every lead on the board", ok and int(last(out) or 0) >= 2, out)
+expect_blocked("CO reads the lead board", C1, "SELECT * FROM public.lead_board();")
+expect_blocked("revoked coordinator reads the lead board", K2, "SELECT * FROM public.lead_board();")
+ok, out, _ = as_user(K1, f"SELECT b::text LIKE '%%hfr_phone%%' OR b::text LIKE '%%phone%%0754%%' FROM public.lead_board('{L3}') b;")
+check("BLOCK: lead board leaks no facility contact details", last(out) == "f", out)
+expect_ok("admin withdraws the contract → verification removed", ADMIN, f"SELECT public.admin_set_contract_signed('{F6}', false, NULL, 'wrong version signed');",
+    verify=lambda: admin_sql(f"SELECT verified FROM public.facility_profiles WHERE user_id='{F6}'") == "f")
+check("ALLOW: contract events logged on the lead",
+      admin_sql(f"SELECT string_agg(action, ',' ORDER BY created_at) FROM public.lead_events WHERE lead_id='{L3}' AND action LIKE 'contract%'") == "contract_confirmed,contract_withdrawn")
+
+# storage (the local shim lacks Supabase's storage grants)
+admin_sql("GRANT USAGE ON SCHEMA storage TO authenticated, anon; GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;")
+expect_ok("coordinator uploads into the lead-files bucket", K1,
+    f"INSERT INTO storage.objects (bucket_id, name) VALUES ('lead-files', '{L3}/site.jpg');")
+expect_blocked("coordinator uploads under a made-up lead folder", K1,
+    "INSERT INTO storage.objects (bucket_id, name) VALUES ('lead-files', '00000000-0000-0000-0000-000000000000/x.jpg');")
+expect_blocked("coordinator uploads to another bucket", K1, f"INSERT INTO storage.objects (bucket_id, name) VALUES ('avatars', '{K1}/me.jpg');")
+admin_sql(f"INSERT INTO storage.objects (bucket_id, name) VALUES ('avatars', '{C1}/face.jpg');")
+ok, out, _ = as_user(K1, "SELECT count(*) FROM storage.objects WHERE bucket_id <> 'lead-files';")
+check("BLOCK: coordinator reads other buckets", out.strip() == "0", out)
+ok, out, _ = as_user(C1, "SELECT count(*) FROM storage.objects WHERE bucket_id = 'lead-files';")
+check("BLOCK: CO reads lead files", out.strip() == "0", out)
+ok, out, _ = as_user(K2, "SELECT count(*) FROM storage.objects WHERE bucket_id = 'lead-files';")
+check("BLOCK: revoked coordinator reads lead files", out.strip() == "0", out)
+expect_blocked("coordinator deletes a stored file", K1, f"DELETE FROM storage.objects WHERE bucket_id='lead-files' AND name='{L3}/site.jpg';",
+    verify=lambda: admin_sql(f"SELECT count(*) FROM storage.objects WHERE name='{L3}/site.jpg'") == "0")
 
 # ── Report ───────────────────────────────────────────────────────────────────
 passed = sum(1 for _, ok, _ in results if ok)

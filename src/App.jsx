@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider } from './context/AuthContext';
 import { NavBar } from './components/layout/NavBar';
 import { PushPrompt } from './components/common/PushPrompt';
-import { RequireCO, RequireFacility, RequireAdmin } from './components/layout/RouteGuard';
+import { RequireCO, RequireFacility, RequireAdmin, RequireCoordinator } from './components/layout/RouteGuard';
 
 import Landing from './pages/Landing';
 import { RegisterPage, LoginPage } from './pages/Auth';
@@ -27,6 +27,12 @@ import AdminShifts from './pages/admin/Shifts';
 import AdminPayments from './pages/admin/Payments';
 import AdminFeedback from './pages/admin/Feedback';
 import AdminCoordinators from './pages/admin/Coordinators';
+import CoordinatorShell from './pages/coordinator/CoordinatorShell';
+import Pipeline from './pages/coordinator/Pipeline';
+import LeadDetail from './pages/coordinator/LeadDetail';
+import Todo from './pages/coordinator/Todo';
+import AddLead from './pages/coordinator/AddLead';
+import Playbook from './pages/coordinator/Playbook';
 
 import COPayments from './pages/co/Payments';
 
@@ -39,7 +45,8 @@ import FeedbackPage from './pages/Feedback';
 // NavBar only on dashboard pages — landing and auth pages manage their own headers
 function AppShell() {
   const { pathname } = useLocation();
-  const showNav = pathname !== '/' && !pathname.startsWith('/auth') && !pathname.startsWith('/invite') && pathname !== '/feedback';
+  const showNav = pathname !== '/' && !pathname.startsWith('/auth') && !pathname.startsWith('/invite') && pathname !== '/feedback'
+    && !pathname.startsWith('/coordinator');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,6 +78,15 @@ function AppShell() {
         <Route path="/admin/payments"   element={<RequireAdmin><AdminPayments /></RequireAdmin>} />
         <Route path="/admin/feedback"   element={<RequireAdmin><AdminFeedback /></RequireAdmin>} />
         <Route path="/admin/coordinators" element={<RequireAdmin><AdminCoordinators /></RequireAdmin>} />
+
+        {/* Coordinator area: mobile-first, own header and bottom tabs */}
+        <Route path="/coordinator" element={<RequireCoordinator><CoordinatorShell /></RequireCoordinator>}>
+          <Route index element={<Pipeline />} />
+          <Route path="todo" element={<Todo />} />
+          <Route path="playbook" element={<Playbook />} />
+          <Route path="new" element={<AddLead />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+        </Route>
         <Route path="/admin"            element={<Navigate to="/admin/dashboard" replace />} />
 
         {/* Invite flow — no auth guard, no NavBar */}

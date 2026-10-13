@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ShieldCheck, RefreshCw, BadgeCheck, XCircle, ExternalLink, Phone, MessageCircle } from 'lucide-react';
+import { ShieldCheck, RefreshCw, BadgeCheck, XCircle, ExternalLink, Phone, MessageCircle, FileSignature } from 'lucide-react';
 import { HFR_STATUS, hfrStatusOf } from './hfrStatus';
 import { Button } from '../common/Button';
 import { Section } from './ProfileKit';
@@ -7,6 +7,7 @@ import { formatDate } from './profileUtils';
 import {
   adminCheckFacilityHfr, adminSetFacilityVerification, adminSetFacilityHfrCode, getFacilityHfrChecks,
 } from '../../lib/api';
+import { getFacilityLeadContracts, setContractSigned, leadFileUrl } from '../../lib/leadsApi';
 
 const HFR_PORTAL = 'https://hfrs.moh.go.tz/web/index.php?r=portal%2Fadvanced-search';
 
@@ -50,6 +51,9 @@ export function HfrVerificationPanel({ profile, onChanged }) {
   const [code, setCode] = useState(profile.hfr_code || '');
 
   const facilityId = profile.user_id;
+  const [contract, setContract] = useState(null);   // { lead, files }
+  const [cFile, setCFile] = useState('');
+  const [cNote, setCNote] = useState('');
   const last = checks?.[0];
   const status = hfrStatusOf(profile);
 
@@ -59,8 +63,23 @@ export function HfrVerificationPanel({ profile, onChanged }) {
   useEffect(() => {
     let alive = true;
     getFacilityHfrChecks(facilityId).then(({ data }) => { if (alive) setChecks(data || []); });
+    getFacilityLeadContracts(facilityId).then((c) => { if (alive) setContract(c); });
     return () => { alive = false; };
   }, [facilityId]);
+
+  async function contractDecision(signed) {
+    setBusy(signed ? 'contract' : 'uncontract'); setMsg('');
+    const { error } = await setContractSigned(facilityId, signed, signed ? cFile || null : null, signed ? (cFile ? null : cNote.trim()) : null);
+    setBusy('');
+    if (error) { setMsg(error.message); return; }
+    setCNote(''); setCFile('');
+    onChanged?.();
+  }
+
+  async function openScan(path) {
+    const { url } = await leadFileUrl(path);
+    if (url) window.open(url, '_blank', 'noopener');
+  }
 
   async function runCheck() {
     setBusy('check'); setMsg('');
@@ -92,7 +111,8 @@ export function HfrVerificationPanel({ profile, onChanged }) {
     onChanged?.();
   }
 
-  const canApprove = profile.hfr_status === 'operating';
+  const contractSigned = !!profile.contract_signed_at;
+  const canApprove = profile.hfr_status === 'operating' && contractSigned;
   const lowMatch = last?.name_match != null && last.name_match < 0.5;
   const hfrIntl = tzIntl(last?.hfr_phone);
   const signupIntl = tzIntl(profile.users?.phone);
@@ -172,6 +192,45 @@ export function HfrVerificationPanel({ profile, onChanged }) {
         </div>
       )}
 
+      {/* Contract: no signature, no approval */}
+      <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+        <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><FileSignature className="w-4 h-4 text-gray-400" /> Signed contract</p>
+        {contractSigned ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-green-700">Confirmed {formatDate(profile.contract_signed_at)}</span>
+            {profile.contract_note && <span className="text-gray-500">— {profile.contract_note}</span>}
+            {profile.contract_file_id && contract?.files?.find((f) => f.id === profile.contract_file_id) && (
+              <button onClick={() => openScan(contract.files.find((f) => f.id === profile.contract_file_id).storage_path)}
+                className="text-teal-700 hover:underline inline-flex items-center gap-0.5">view scan <ExternalLink className="w-3 h-3" /></button>
+            )}
+            <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 ml-auto" loading={busy === 'uncontract'} onClick={() => contractDecision(false)}>
+              Withdraw
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">
+              {contract?.lead
+                ? `Lead: ${contract.lead.name}. Pick the uploaded scan, or note where the signed paper copy is.`
+                : 'No coordinator lead is linked to this facility, so there is no uploaded scan. Note where the signed paper copy is.'}
+            </p>
+            {contract?.files?.length > 0 && (
+              <select value={cFile} onChange={(e) => setCFile(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm">
+                <option value="">Choose the contract scan…</option>
+                {contract.files.map((f) => <option key={f.id} value={f.id}>{f.file_name || 'Contract scan'} · {formatDate(f.created_at)}</option>)}
+              </select>
+            )}
+            {!cFile && (
+              <input value={cNote} onChange={(e) => setCNote(e.target.value)} placeholder="e.g. Signed copy in the office file, 14 Oct"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            )}
+            <Button size="sm" variant="secondary" disabled={!cFile && !cNote.trim()} loading={busy === 'contract'} onClick={() => contractDecision(true)}>
+              <FileSignature className="w-4 h-4" /> Confirm contract signed
+            </Button>
+          </div>
+        )}
+      </div>
+
       {profile.verified ? (
         <div className="mt-4 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-start gap-2">
           <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0" />
@@ -200,7 +259,7 @@ export function HfrVerificationPanel({ profile, onChanged }) {
           </Button>
           {!profile.verified && (
             <Button size="sm" disabled={!canApprove} loading={busy === 'approve'} onClick={() => decide(true)}
-              title={canApprove ? '' : 'Needs an operating facility on HFR first'}>
+              title={canApprove ? '' : profile.hfr_status !== 'operating' ? 'Needs an operating facility on HFR first' : 'Confirm the signed contract first'}>
               <BadgeCheck className="w-4 h-4" /> Approve — facility confirmed
             </Button>
           )}

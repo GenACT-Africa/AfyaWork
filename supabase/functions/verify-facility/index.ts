@@ -7,6 +7,9 @@
  *                                  admin or service: check the next batch (oldest check first)
  *   { self: true }                 signed-in facility: check own HFR code (max once / 10 min)
  *   { lookup: "<hfr code>" }       admin: look a code up without saving (e.g. while adding a facility)
+ *   { lead_id: "<uuid>" }          admin or active coordinator: look up a lead's HFR code and store the
+ *                                  result on the lead (ticks steps 1a–1c; fills the official phone if empty).
+ *                                  One lead per call, max once a minute per lead — never loop over leads.
  *   { ping: true }                 anyone: is HFR reachable from here? (no data returned)
  *
  * Writes the latest result to facility_profiles.hfr_* and a full row to facility_hfr_checks.
@@ -126,6 +129,38 @@ async function checkFacility(facilityId: string, source: string) {
            hfr_name: r.hfr_name ?? null, hfr_code: r.hfr_code ?? null };
 }
 
+// ── look up a lead (coordinator pipeline) ───────────────────────────────────
+async function checkLead(leadId: string, actor: string) {
+  const { data: lead } = await db.from('facility_leads')
+    .select('id, hfr_code, official_phone, hfr_checked_at').eq('id', leadId).single();
+  if (!lead) return { error: 'Lead not found' };
+  if (!lead.hfr_code) return { status: 'no_code', message: 'Add the HFR code first' };
+  if (lead.hfr_checked_at && Date.now() - new Date(lead.hfr_checked_at).getTime() < 60e3) {
+    return { skipped: true, message: 'Checked less than a minute ago' };
+  }
+  let r: HfrResult;
+  try { r = await lookup(lead.hfr_code); }
+  catch (e) { r = { status: 'error', message: `Could not reach the Health Facility Registry: ${(e as Error).message}` }; }
+
+  if (r.status === 'error') return { status: 'error', message: r.message };   // keep the last good result
+  const upd: Record<string, unknown> = {
+    hfr_status: r.status,
+    hfr_name: r.hfr_name ?? null,
+    hfr_checked_at: new Date().toISOString(),
+  };
+  if (!lead.official_phone && r.hfr_phone) upd.official_phone = r.hfr_phone;
+  await db.from('facility_leads').update(upd).eq('id', leadId);
+  await db.from('lead_events').insert({
+    lead_id: leadId, actor_id: actor, action: 'hfr_lookup',
+    detail: { code: lead.hfr_code, status: r.status, name: r.hfr_name ?? null, council: r.hfr_council ?? null },
+  });
+  return {
+    status: r.status, message: r.message, hfr_name: r.hfr_name ?? null, hfr_type: r.hfr_type ?? null,
+    hfr_council: r.hfr_council ?? null, hfr_region: r.hfr_region ?? null, hfr_address: r.hfr_address ?? null,
+    hfr_phone: r.hfr_phone ?? null, phone_filled: !!upd.official_phone,
+  };
+}
+
 // ── handler ─────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -157,6 +192,15 @@ Deno.serve(async (req) => {
       }
       const r = await checkFacility(me.id, body.source === 'signup' ? 'signup' : 'self');
       return json({ status: r.status, message: r.message, hfr_name: r.hfr_name });  // no phone/owner back to the facility
+    }
+
+    if (body.lead_id) {
+      if (!me) return json({ error: 'Sign in required' }, 401);
+      if (me.role !== 'admin') {
+        const { data: u } = await db.from('users').select('role, account_status').eq('id', me.id).single();
+        if (u?.role !== 'coordinator' || u?.account_status !== 'active') return json({ error: 'Not allowed' }, 403);
+      }
+      return json(await checkLead(String(body.lead_id), me.id));
     }
 
     if (!admin) return json({ error: me ? 'Admins only' : 'Sign in required' }, me ? 403 : 401);
